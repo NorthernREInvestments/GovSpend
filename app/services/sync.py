@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Contract, ContractStatus, SyncLog
 from app.services.app_settings import get_sync_config
-from app.services.sync_lock import SyncInProgressError, acquire_sync_lock, get_running_sync_log, release_sync_lock
+from app.services.sync_lock import acquire_sync_lock, get_running_sync_log, release_sync_lock
 from app.services.usaspending import USAspendingClient, map_award_to_contract_fields
 from app.services.watchlist import (
     remove_out_of_window_watchlist,
@@ -32,9 +32,6 @@ class ContractSyncService:
         self.client = USAspendingClient(min_award_amount=self.sync_config.min_award_amount)
 
     async def run_sync(self) -> SyncLog:
-        if running:
-            raise SyncInProgressError(running)
-
         await acquire_sync_lock(self.db)
 
         try:
