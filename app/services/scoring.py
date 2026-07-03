@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 
 def compute_pursuit_score(award_amount: float, expiration_date: date, today: date | None = None) -> float:
@@ -26,3 +26,18 @@ def usaspending_award_url(generated_internal_id: str | None) -> str:
     if not generated_internal_id:
         return ""
     return f"https://www.usaspending.gov/award/{generated_internal_id}"
+
+
+def watchlist_priority(award_amount: float, expiration_date: date, today: date | None = None) -> str:
+    """High/Medium/Low priority for the watchlist table."""
+    today = today or date.today()
+    days_left = (expiration_date - today).days
+    if days_left <= 60 and award_amount > 100_000:
+        return "High"
+    if days_left <= 120 and award_amount > 50_000:
+        return "Medium"
+    return "Low"
+
+
+def expected_repost_dates(expiration_date: date) -> tuple[date, date]:
+    return expiration_date - timedelta(days=120), expiration_date - timedelta(days=30)

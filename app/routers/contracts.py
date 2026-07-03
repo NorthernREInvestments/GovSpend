@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Contract, ContractStatus
+from app.models import Contract, ContractStatus, Watchlist, WatchlistPriority
 from app.schemas import (
     AppSettingsRead,
     AppSettingsUpdate,
@@ -16,6 +16,8 @@ from app.schemas import (
     ContractStatusUpdate,
     DashboardStats,
     SyncStatusRead,
+    WatchlistRead,
+    WatchlistStatusUpdate,
 )
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.scoring import priority_tier, usaspending_award_url
@@ -30,6 +32,50 @@ def _pursuit_query(db: Session):
         Contract.expiration_date.asc(),
         Contract.award_amount.desc(),
     )
+
+
+def _watchlist_query(db: Session):
+    priority_order = {
+        WatchlistPriority.HIGH: 0,
+        WatchlistPriority.MEDIUM: 1,
+        WatchlistPriority.LOW: 2,
+    }
+    rows = db.query(Watchlist).all()
+    return sorted(
+        rows,
+        key=lambda w: (
+            priority_order.get(w.priority, 3),
+            w.expiration_date,
+            -w.award_amount,
+        ),
+    )
+
+
+@router.get("/watchlist", response_model=list[WatchlistRead])
+def list_watchlist(
+    priority: WatchlistPriority | None = None,
+    db: Session = Depends(get_db),
+):
+    rows = _watchlist_query(db)
+    if priority:
+        rows = [r for r in rows if r.priority == priority]
+    return rows
+
+
+@router.patch("/watchlist/{watchlist_id}/status", response_model=WatchlistRead)
+def update_watchlist_status(
+    watchlist_id: int,
+    payload: WatchlistStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    entry = db.query(Watchlist).filter(Watchlist.id == watchlist_id).one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Watchlist entry not found")
+    entry.status = payload.status
+    entry.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 @router.get("/settings", response_model=AppSettingsRead)

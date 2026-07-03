@@ -37,6 +37,14 @@ def format_place_of_performance(pop: Any) -> str:
     return ", ".join(part for part in parts if part)
 
 
+def parse_location(pop: Any) -> tuple[str, str]:
+    if not pop or isinstance(pop, str):
+        return "", ""
+    city = (pop.get("city_name") or "").strip()
+    state = (pop.get("state_name") or pop.get("state_code") or "").strip()
+    return city, state
+
+
 def parse_naics_code(naics: Any) -> str:
     if not naics:
         return ""
@@ -240,6 +248,8 @@ def map_award_to_contract_fields(row: dict[str, Any], enrichment: dict[str, str]
     subtier = row.get("Awarding Sub Agency") or ""
     contracting_office = enrichment.get("contracting_office") or subtier
     award_amount = float(row.get("Award Amount") or 0)
+    pop = row.get("Primary Place of Performance")
+    location_city, location_state = parse_location(pop)
 
     return {
         "award_id": award_id,
@@ -247,7 +257,9 @@ def map_award_to_contract_fields(row: dict[str, Any], enrichment: dict[str, str]
         "contract_name": description or award_id,
         "award_amount": award_amount,
         "agency": row.get("Awarding Agency") or "Unknown Agency",
-        "place_of_performance": format_place_of_performance(row.get("Primary Place of Performance")),
+        "place_of_performance": format_place_of_performance(pop),
+        "location_city": location_city,
+        "location_state": location_state,
         "incumbent_name": row.get("Recipient Name") or "Unknown",
         "expiration_date": end_date,
         "contracting_office": contracting_office,

@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.models import ContractStatus
+from app.models import ContractStatus, WatchlistPriority, WatchlistStatus
 
 
 class ContractBase(BaseModel):
@@ -67,3 +67,27 @@ class AppSettingsRead(BaseModel):
 class AppSettingsUpdate(BaseModel):
     min_award_amount: float = Field(ge=1_000, le=500_000_000)
     expiration_days: int = Field(ge=1, le=365)
+
+
+class WatchlistRead(BaseModel):
+    id: int
+    contract_name: str
+    agency: str
+    location_city: str
+    location_state: str
+    naics_code: str
+    incumbent_name: str
+    award_amount: float
+    expiration_date: date
+    expected_repost_start: date
+    expected_repost_end: date
+    priority: WatchlistPriority
+    status: WatchlistStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WatchlistStatusUpdate(BaseModel):
+    status: WatchlistStatus

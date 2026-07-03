@@ -3,11 +3,15 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.services.app_settings import get_or_create_app_settings, update_app_settings
-from app.models import Contract, ContractStatus, SyncLog
 from app.services.app_settings import get_sync_config
+from app.models import Contract, ContractStatus, SyncLog
 from app.services.scoring import compute_pursuit_score
 from app.services.usaspending import USAspendingClient, map_award_to_contract_fields
+from app.services.watchlist import (
+    remove_out_of_window_watchlist,
+    remove_stale_watchlist,
+    upsert_watchlist,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,21 +38,26 @@ class ContractSyncService:
             awards, pages_scanned = await self.client.search_expiring_contracts(window_start, window_end)
             log.contracts_found = len(awards)
             upserted = 0
+            watchlist_upserted = 0
 
             for award in awards:
                 generated_id = award.get("generated_internal_id")
                 enrichment = await self.client.enrich_award(generated_id or "")
                 fields = map_award_to_contract_fields(award, enrichment)
                 upserted += self._upsert_contract(fields)
+                watchlist_upserted += upsert_watchlist(self.db, fields)
 
             expired_removed = self._remove_stale_contracts(window_start)
             out_of_window_removed = self._remove_out_of_window_contracts(window_end)
+            watchlist_stale = remove_stale_watchlist(self.db, window_start)
+            watchlist_outside = remove_out_of_window_watchlist(self.db, window_end)
             log.contracts_upserted = upserted
             log.pages_scanned = pages_scanned
             log.status = "success"
             log.message = (
-                f"Upserted {upserted} contracts. Removed {expired_removed} expired "
-                f"and {out_of_window_removed} outside {self.sync_config.expiration_days}-day window."
+                f"Upserted {upserted} contracts and {watchlist_upserted} watchlist entries. "
+                f"Removed {expired_removed} expired contracts, {out_of_window_removed} outside window. "
+                f"Watchlist cleanup: {watchlist_stale} expired, {watchlist_outside} outside window."
             )
         except Exception as exc:
             logger.exception("Contract sync failed")
