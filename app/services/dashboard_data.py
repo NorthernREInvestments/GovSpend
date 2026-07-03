@@ -26,7 +26,7 @@ def build_dashboard_data(db: Session) -> dict:
     hot_leads = [
         contract
         for contract in contract_rows
-        if priority_tier(contract.award_amount, contract.expiration_date) == "High"
+        if priority_tier(contract.estimated_annual_value, contract.expiration_date) == "High"
     ][:5]
 
     today = date.today()
@@ -35,7 +35,7 @@ def build_dashboard_data(db: Session) -> dict:
     else:
         month_end = date(today.year, today.month + 1, 1) - timedelta(days=1)
 
-    total_value = sum(contract.award_amount for contract in contract_rows)
+    total_value = sum(contract.estimated_annual_value for contract in contract_rows)
     expiring_this_month = sum(
         1
         for contract in contract_rows

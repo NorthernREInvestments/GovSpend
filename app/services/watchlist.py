@@ -10,7 +10,7 @@ def build_watchlist_fields(contract_fields: dict, today: date | None = None) -> 
     expiration = contract_fields["expiration_date"]
     repost_start, repost_end = expected_repost_dates(expiration)
     priority_label = watchlist_priority(
-        contract_fields["award_amount"],
+        contract_fields.get("estimated_annual_value") or contract_fields["award_amount"],
         expiration,
         today=today,
     )

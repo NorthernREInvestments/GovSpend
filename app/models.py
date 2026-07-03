@@ -56,6 +56,12 @@ class Contract(Base):
     generated_internal_id: Mapped[str | None] = mapped_column(String(256))
     contract_name: Mapped[str] = mapped_column(Text, nullable=False)
     award_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    total_obligation: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    base_exercised_options_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    base_all_options_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estimated_annual_value: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    pop_flag: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     agency: Mapped[str] = mapped_column(String(512), nullable=False)
     place_of_performance: Mapped[str] = mapped_column(Text, nullable=False, default="")
     incumbent_name: Mapped[str] = mapped_column(String(512), nullable=False, default="")
@@ -142,7 +148,7 @@ class AppSettings(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     min_award_amount: Mapped[float] = mapped_column(Float, nullable=False, default=50_000)
-    max_award_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_award_amount: Mapped[float | None] = mapped_column(Float, nullable=True, default=350_000)
     expiration_days: Mapped[int] = mapped_column(nullable=False, default=60)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

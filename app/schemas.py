@@ -8,6 +8,12 @@ from app.models import ContractStatus, WatchlistPriority, WatchlistStatus
 class ContractBase(BaseModel):
     contract_name: str
     award_amount: float
+    estimated_annual_value: float = 0
+    start_date: date | None = None
+    total_obligation: float = 0
+    base_exercised_options_value: float | None = None
+    base_all_options_value: float | None = None
+    pop_flag: str = ""
     agency: str
     place_of_performance: str
     incumbent_name: str
@@ -82,7 +88,7 @@ class AppSettingsUpdate(BaseModel):
             self.max_award_amount is not None
             and self.max_award_amount < self.min_award_amount
         ):
-            raise ValueError("Maximum contract value must be greater than or equal to minimum")
+            raise ValueError("Maximum est. annual value must be greater than or equal to minimum")
         return self
 
 

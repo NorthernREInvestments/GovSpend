@@ -7,7 +7,11 @@ from typing import Any
 import httpx
 
 from app.config import settings
-from app.services.scoring import compute_pursuit_score
+from app.services.scoring import (
+    compute_estimated_annual_value,
+    compute_pop_flag,
+    compute_pursuit_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +20,7 @@ SEARCH_FIELDS = [
     "Description",
     "Recipient Name",
     "Award Amount",
+    "Start Date",
     "Awarding Agency",
     "Awarding Sub Agency",
     "Primary Place of Performance",
@@ -68,6 +73,7 @@ class USAspendingClient:
         self,
         min_award_amount: float | None = None,
         max_award_amount: float | None = None,
+        max_annual_value: float | None = None,
     ) -> None:
         self.base_url = settings.usaspending_base_url.rstrip("/")
         self.min_award_amount = (
@@ -76,12 +82,15 @@ class USAspendingClient:
         self.max_award_amount = (
             max_award_amount if max_award_amount is not None else settings.max_award_amount
         )
+        self.max_annual_value = (
+            max_annual_value
+            if max_annual_value is not None
+            else (self.max_award_amount or 350_000)
+        )
 
     def _award_amount_filter(self) -> list[dict[str, float]]:
-        amount_filter: dict[str, float] = {"lower_bound": self.min_award_amount}
-        if self.max_award_amount is not None:
-            amount_filter["upper_bound"] = self.max_award_amount
-        return [amount_filter]
+        # Loose total-value floor; annual range is enforced after detail enrichment.
+        return [{"lower_bound": max(1_000, self.min_award_amount)}]
 
     async def stream_expiring_contracts(
         self,
@@ -203,12 +212,6 @@ class USAspendingClient:
                 if end_date is None:
                     continue
                 if window_start <= end_date <= window_end:
-                    award_amount = float(row.get("Award Amount") or 0)
-                    if (
-                        self.max_award_amount is not None
-                        and award_amount > self.max_award_amount
-                    ):
-                        continue
                     award_id = row.get("Award ID")
                     if not award_id:
                         continue
@@ -253,47 +256,120 @@ class USAspendingClient:
 
         return results, total_pages
 
-    async def enrich_award(self, generated_internal_id: str) -> dict[str, str]:
-        empty = {
+    async def enrich_awards_batch(
+        self,
+        awards: list[dict[str, Any]],
+        *,
+        concurrency: int = 6,
+    ) -> list[dict[str, Any]]:
+        if not awards:
+            return []
+
+        semaphore = asyncio.Semaphore(concurrency)
+        shared_client = httpx.AsyncClient(timeout=60.0)
+
+        async def enrich_one(row: dict[str, Any]) -> dict[str, Any]:
+            async with semaphore:
+                generated_internal_id = row.get("generated_internal_id")
+                enrichment = await self._enrich_award_with_client(
+                    shared_client,
+                    generated_internal_id,
+                    include_co=False,
+                )
+                return map_award_to_contract_fields(
+                    row,
+                    enrichment,
+                    max_annual_value=self.max_annual_value,
+                )
+
+        try:
+            return await asyncio.gather(*(enrich_one(row) for row in awards))
+        finally:
+            await shared_client.aclose()
+
+    async def enrich_award(
+        self,
+        generated_internal_id: str,
+        *,
+        include_co: bool = True,
+    ) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            return await self._enrich_award_with_client(
+                client,
+                generated_internal_id,
+                include_co=include_co,
+            )
+
+    async def _enrich_award_with_client(
+        self,
+        client: httpx.AsyncClient,
+        generated_internal_id: str | None,
+        *,
+        include_co: bool,
+    ) -> dict[str, Any]:
+        empty: dict[str, Any] = {
             "contracting_office": "",
             "co_name": "",
             "set_aside": "",
             "extent_competed": "",
             "solicitation_number": "",
+            "start_date": None,
+            "total_obligation": None,
+            "base_exercised_options_value": None,
+            "base_all_options_value": None,
         }
         if not generated_internal_id:
             return empty
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.get(
-                    f"{self.base_url}/api/v2/awards/{generated_internal_id}/"
-                )
-                response.raise_for_status()
-                data = response.json()
-            except httpx.HTTPError:
-                logger.warning("Failed to enrich award %s", generated_internal_id)
-                return empty
+        try:
+            response = await client.get(
+                f"{self.base_url}/api/v2/awards/{generated_internal_id}/"
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError:
+            logger.warning("Failed to enrich award %s", generated_internal_id)
+            return empty
 
-            awarding_agency = data.get("awarding_agency") or {}
-            contracting_office = awarding_agency.get("office_agency_name") or ""
+        awarding_agency = data.get("awarding_agency") or {}
+        contracting_office = awarding_agency.get("office_agency_name") or ""
+        co_name = ""
+        if include_co:
             co_name = await self._fetch_contracting_officer(
                 client,
                 award_id=data.get("piid") or data.get("generated_unique_award_id"),
             )
 
-            if not contracting_office:
-                subtier = awarding_agency.get("subtier_agency") or {}
-                contracting_office = subtier.get("name") or ""
+        if not contracting_office:
+            subtier = awarding_agency.get("subtier_agency") or {}
+            contracting_office = subtier.get("name") or ""
 
-            tx = data.get("latest_transaction_contract_data") or {}
-            return {
-                "contracting_office": contracting_office,
-                "co_name": co_name,
-                "set_aside": tx.get("type_set_aside_description") or tx.get("type_set_aside") or "",
-                "extent_competed": tx.get("extent_competed_description") or tx.get("extent_competed") or "",
-                "solicitation_number": tx.get("solicitation_identifier") or "",
-            }
+        tx = data.get("latest_transaction_contract_data") or {}
+        pop = data.get("period_of_performance") or {}
+        start_date = parse_end_date(pop.get("start_date")) or parse_end_date(
+            data.get("period_of_performance_start_date")
+        )
+
+        def _float_or_none(value: Any) -> float | None:
+            if value in (None, ""):
+                return None
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError):
+                return None
+            return parsed if parsed > 0 else None
+
+        return {
+            "contracting_office": contracting_office,
+            "co_name": co_name,
+            "set_aside": tx.get("type_set_aside_description") or tx.get("type_set_aside") or "",
+            "extent_competed": tx.get("extent_competed_description") or tx.get("extent_competed") or "",
+            "solicitation_number": tx.get("solicitation_identifier") or "",
+            "start_date": start_date,
+            "total_obligation": _float_or_none(data.get("total_obligation")),
+            "base_exercised_options_value": _float_or_none(data.get("base_exercised_options")),
+            "base_all_options_value": _float_or_none(data.get("base_and_all_options")),
+        }
 
     async def _fetch_contracting_officer(self, client: httpx.AsyncClient, award_id: Any) -> str:
         if not award_id:
@@ -328,16 +404,33 @@ class USAspendingClient:
             return ""
 
 
-def map_award_to_contract_fields(row: dict[str, Any], enrichment: dict[str, str]) -> dict[str, Any]:
+def map_award_to_contract_fields(
+    row: dict[str, Any],
+    enrichment: dict[str, Any],
+    *,
+    max_annual_value: float = 350_000,
+) -> dict[str, Any]:
     description = (row.get("Description") or "").strip()
     award_id = row.get("Award ID") or ""
     end_date = parse_end_date(row.get("End Date"))
     if end_date is None:
         raise ValueError(f"Missing end date for award {award_id}")
 
+    start_date = enrichment.get("start_date") or parse_end_date(row.get("Start Date"))
+    total_obligation = enrichment.get("total_obligation")
+    if total_obligation is None:
+        total_obligation = float(row.get("Award Amount") or 0)
+    else:
+        total_obligation = float(total_obligation)
+
+    base_exercised = enrichment.get("base_exercised_options_value")
+    base_all = enrichment.get("base_all_options_value")
+    estimated_annual = compute_estimated_annual_value(total_obligation, start_date, end_date)
+    if estimated_annual is None:
+        estimated_annual = 0.0
+
     subtier = row.get("Awarding Sub Agency") or ""
     contracting_office = enrichment.get("contracting_office") or subtier
-    award_amount = float(row.get("Award Amount") or 0)
     pop = row.get("Primary Place of Performance")
     location_city, location_state = parse_location(pop)
 
@@ -345,7 +438,13 @@ def map_award_to_contract_fields(row: dict[str, Any], enrichment: dict[str, str]
         "award_id": award_id,
         "generated_internal_id": row.get("generated_internal_id"),
         "contract_name": description or award_id,
-        "award_amount": award_amount,
+        "award_amount": total_obligation,
+        "start_date": start_date,
+        "total_obligation": total_obligation,
+        "base_exercised_options_value": base_exercised,
+        "base_all_options_value": base_all,
+        "estimated_annual_value": estimated_annual,
+        "pop_flag": compute_pop_flag(base_exercised, base_all),
         "agency": row.get("Awarding Agency") or "Unknown Agency",
         "place_of_performance": format_place_of_performance(pop),
         "location_city": location_city,
@@ -358,5 +457,9 @@ def map_award_to_contract_fields(row: dict[str, Any], enrichment: dict[str, str]
         "set_aside": enrichment.get("set_aside") or "",
         "extent_competed": enrichment.get("extent_competed") or "",
         "solicitation_number": enrichment.get("solicitation_number") or "",
-        "pursuit_score": compute_pursuit_score(award_amount, end_date),
+        "pursuit_score": compute_pursuit_score(
+            estimated_annual,
+            end_date,
+            max_annual_value=max_annual_value,
+        ),
     }

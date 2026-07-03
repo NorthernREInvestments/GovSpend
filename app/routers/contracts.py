@@ -232,9 +232,12 @@ def export_contracts(db: Session = Depends(get_db)):
     writer.writerow([
         "Priority",
         "Pursuit Score",
+        "Est. Annual Value",
+        "Total Obligation",
+        "PoP Flag",
         "Expiration",
         "Days Left",
-        "Award Amount",
+        "Start Date",
         "Contract",
         "Award ID",
         "Agency",
@@ -254,11 +257,14 @@ def export_contracts(db: Session = Depends(get_db)):
     for c in contracts:
         days_left = (c.expiration_date - today).days
         writer.writerow([
-            priority_tier(c.award_amount, c.expiration_date, today),
+            priority_tier(c.estimated_annual_value, c.expiration_date, today),
             c.pursuit_score,
+            c.estimated_annual_value,
+            c.total_obligation,
+            c.pop_flag,
             c.expiration_date.isoformat(),
             days_left,
-            c.award_amount,
+            c.start_date.isoformat() if c.start_date else "",
             c.contract_name,
             c.award_id,
             c.agency,
@@ -297,7 +303,7 @@ def get_stats(db: Session = Depends(get_db)):
     expiring_this_month = 0
 
     for contract in contracts:
-        total_value += contract.award_amount
+        total_value += contract.estimated_annual_value
         by_status[contract.status.value] = by_status.get(contract.status.value, 0) + 1
         if today <= contract.expiration_date <= month_end:
             expiring_this_month += 1

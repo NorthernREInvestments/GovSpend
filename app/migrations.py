@@ -38,6 +38,12 @@ NEW_COLUMNS = [
     ("solicitation_number", "VARCHAR(128) NOT NULL DEFAULT ''"),
     ("pursuit_score", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
     ("notes", "TEXT NOT NULL DEFAULT ''"),
+    ("start_date", "DATE"),
+    ("total_obligation", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("base_exercised_options_value", "DOUBLE PRECISION"),
+    ("base_all_options_value", "DOUBLE PRECISION"),
+    ("estimated_annual_value", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("pop_flag", "VARCHAR(128) NOT NULL DEFAULT ''"),
 ]
 
 APP_SETTINGS_COLUMNS = [
@@ -117,3 +123,10 @@ def run_migrations() -> None:
                         text(f'ALTER TABLE "{GS_APP_SETTINGS}" ADD COLUMN {name} {col_type}')
                     )
                     logger.info("Added column %s to %s", name, GS_APP_SETTINGS)
+
+            conn.execute(
+                text(
+                    f'UPDATE "{GS_APP_SETTINGS}" SET max_award_amount = 350000 '
+                    "WHERE max_award_amount IS NULL"
+                )
+            )

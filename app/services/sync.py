@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.models import Contract, ContractStatus, SyncLog
 from app.services.app_settings import get_sync_config
+from app.services.scoring import annual_value_in_range
 from app.services.sync_lock import acquire_sync_lock, get_running_sync_log, release_sync_lock
-from app.services.usaspending import USAspendingClient, map_award_to_contract_fields
+from app.services.usaspending import USAspendingClient
 from app.services.watchlist import (
     remove_out_of_window_watchlist,
     remove_stale_watchlist,
@@ -15,14 +16,6 @@ from app.services.watchlist import (
 
 logger = logging.getLogger(__name__)
 
-EMPTY_ENRICHMENT: dict[str, str] = {
-    "contracting_office": "",
-    "co_name": "",
-    "set_aside": "",
-    "extent_competed": "",
-    "solicitation_number": "",
-}
-
 WATCHLIST_ONLY_FIELDS = frozenset({"location_city", "location_state"})
 
 
@@ -30,9 +23,13 @@ class ContractSyncService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.sync_config = get_sync_config(db)
-        self.client = USAspendingClient(
+        self.client = self._build_client()
+
+    def _build_client(self) -> USAspendingClient:
+        return USAspendingClient(
             min_award_amount=self.sync_config.min_award_amount,
             max_award_amount=self.sync_config.max_award_amount,
+            max_annual_value=self.sync_config.max_award_amount or 350_000,
         )
 
     async def run_sync(self, *, lock_held: bool = False, log_id: int | None = None) -> SyncLog:
@@ -46,10 +43,7 @@ class ContractSyncService:
 
     async def _run_sync_locked(self, log_id: int | None = None) -> SyncLog:
         self.sync_config = get_sync_config(self.db)
-        self.client = USAspendingClient(
-            min_award_amount=self.sync_config.min_award_amount,
-            max_award_amount=self.sync_config.max_award_amount,
-        )
+        self.client = self._build_client()
 
         if log_id is not None:
             log = self.db.query(SyncLog).filter(SyncLog.id == log_id).one()
@@ -65,19 +59,20 @@ class ContractSyncService:
 
         window_start = date.today()
         window_end = window_start + timedelta(days=self.sync_config.expiration_days)
+        min_annual = self.sync_config.min_award_amount
+        max_annual = self.sync_config.max_award_amount
 
         try:
-            amount_range = (
-                f"${self.sync_config.min_award_amount:,.0f}"
-                f"–${self.sync_config.max_award_amount:,.0f}"
-                if self.sync_config.max_award_amount is not None
-                else f"${self.sync_config.min_award_amount:,.0f}+"
+            annual_range = (
+                f"${min_annual:,.0f}–${max_annual:,.0f}/yr est."
+                if max_annual is not None
+                else f"${min_annual:,.0f}+/yr est."
             )
             logger.info(
-                "Starting sync — window %s to %s, award range %s (log id %s)",
+                "Starting sync — window %s to %s, annual range %s (log id %s)",
                 window_start,
                 window_end,
-                amount_range,
+                annual_range,
                 log.id,
             )
             log.message = "Contacting USAspending API…"
@@ -87,14 +82,22 @@ class ContractSyncService:
             upserted = 0
             watchlist_upserted = 0
             pages_scanned = 0
+            skipped_annual = 0
 
             async for page_batch, pages, naics_code in self.client.stream_expiring_contracts(
                 window_start, window_end
             ):
                 pages_scanned = pages
+                enriched_fields = await self.client.enrich_awards_batch(page_batch)
 
-                for award in page_batch:
-                    fields = map_award_to_contract_fields(award, EMPTY_ENRICHMENT)
+                for fields in enriched_fields:
+                    if not annual_value_in_range(
+                        fields.get("estimated_annual_value"),
+                        min_annual,
+                        max_annual,
+                    ):
+                        skipped_annual += 1
+                        continue
                     upserted += self._upsert_contract(fields, commit=False)
                     watchlist_upserted += upsert_watchlist(self.db, fields, commit=False)
 
@@ -115,24 +118,17 @@ class ContractSyncService:
                 self.db.commit()
 
                 logger.info(
-                    "Scanned page %s (NAICS %s) — %s contracts in batch, %s total saved",
+                    "Scanned page %s (NAICS %s) — %s in batch, %s saved, %s outside annual range",
                     pages_scanned,
                     naics_code,
                     len(page_batch),
                     upserted,
+                    skipped_annual,
                 )
-
-                if page_batch:
-                    logger.info(
-                        "Saved batch of %s contracts (%s total, page %s)",
-                        len(page_batch),
-                        upserted,
-                        pages_scanned,
-                    )
 
             expired_removed = self._remove_stale_contracts(window_start)
             out_of_window_removed = self._remove_out_of_window_contracts(window_end)
-            above_max_removed = self._remove_above_max_contracts(self.sync_config.max_award_amount)
+            outside_annual_removed = self._remove_outside_annual_range(min_annual, max_annual)
             watchlist_stale = remove_stale_watchlist(self.db, window_start)
             watchlist_outside = remove_out_of_window_watchlist(self.db, window_end)
 
@@ -141,8 +137,10 @@ class ContractSyncService:
             log.status = "success"
             log.message = (
                 f"Upserted {upserted} contracts and {watchlist_upserted} watchlist entries. "
-                f"Removed {expired_removed} expired contracts, {out_of_window_removed} outside window"
-                f"{f', {above_max_removed} above max award' if above_max_removed else ''}. "
+                f"Skipped {skipped_annual} outside ${min_annual:,.0f}"
+                f"{f'–${max_annual:,.0f}' if max_annual is not None else '+'}/yr est. annual range. "
+                f"Removed {expired_removed} expired, {out_of_window_removed} outside window"
+                f"{f', {outside_annual_removed} outside annual range' if outside_annual_removed else ''}. "
                 f"Watchlist cleanup: {watchlist_stale} expired, {watchlist_outside} outside window."
             )
             log.finished_at = datetime.utcnow()
@@ -173,6 +171,12 @@ class ContractSyncService:
             existing.generated_internal_id = fields.get("generated_internal_id")
             existing.contract_name = fields["contract_name"]
             existing.award_amount = fields["award_amount"]
+            existing.start_date = fields.get("start_date")
+            existing.total_obligation = fields.get("total_obligation", fields["award_amount"])
+            existing.base_exercised_options_value = fields.get("base_exercised_options_value")
+            existing.base_all_options_value = fields.get("base_all_options_value")
+            existing.estimated_annual_value = fields.get("estimated_annual_value", 0.0)
+            existing.pop_flag = fields.get("pop_flag", "")
             existing.agency = fields["agency"]
             existing.place_of_performance = fields["place_of_performance"]
             existing.incumbent_name = fields["incumbent_name"]
@@ -229,18 +233,19 @@ class ContractSyncService:
         self.db.commit()
         return len(outside)
 
-    def _remove_above_max_contracts(self, max_award_amount: float | None) -> int:
-        if max_award_amount is None:
-            return 0
-        above = (
-            self.db.query(Contract)
-            .filter(Contract.award_amount > max_award_amount)
-            .all()
-        )
-        for contract in above:
+    def _remove_outside_annual_range(
+        self,
+        min_annual_value: float,
+        max_annual_value: float | None,
+    ) -> int:
+        query = self.db.query(Contract).filter(Contract.estimated_annual_value < min_annual_value)
+        if max_annual_value is not None:
+            query = query.filter(Contract.estimated_annual_value > max_annual_value)
+        outside = query.all()
+        for contract in outside:
             self.db.delete(contract)
         self.db.commit()
-        return len(above)
+        return len(outside)
 
     def get_latest_sync_log(self) -> SyncLog | None:
         return (

@@ -15,9 +15,9 @@
         <p class="subtitle" id="settings-subtitle">
           Prioritized recompete opportunities · {{ app_settings.expiration_days }}-day window ·
           {% if app_settings.max_award_amount %}
-          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}–${{ "{:,.0f}".format(app_settings.max_award_amount) }} ·
+          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}–${{ "{:,.0f}".format(app_settings.max_award_amount) }}/yr est. ·
           {% else %}
-          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}+ ·
+          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}+/yr est. ·
           {% endif %}
           target NAICS
         </p>
@@ -57,7 +57,7 @@
       </div>
       <form id="settings-form" class="settings-form">
         <label>
-          Minimum contract value
+          Minimum est. annual value
           <div class="input-with-prefix">
             <span>$</span>
             <input type="number" id="min-award-amount" name="min_award_amount"
@@ -65,13 +65,12 @@
           </div>
         </label>
         <label>
-          Maximum contract value <span class="field-hint">(optional)</span>
+          Maximum est. annual value
           <div class="input-with-prefix">
             <span>$</span>
             <input type="number" id="max-award-amount" name="max_award_amount"
               min="1000" step="1000"
-              value="{% if app_settings.max_award_amount %}{{ app_settings.max_award_amount | int }}{% endif %}"
-              placeholder="No limit" />
+              value="{{ (app_settings.max_award_amount or 350000) | int }}" required />
           </div>
         </label>
         <label>
@@ -88,7 +87,7 @@
 
     <section class="stats-grid">
       <article class="stat-card stat-primary">
-        <p class="stat-label">Actionable Pipeline Value</p>
+        <p class="stat-label">Est. Annual Pipeline</p>
         <p class="stat-value" id="stat-total-value">{{ stats.total_value | currency }}</p>
       </article>
       <article class="stat-card">
@@ -107,16 +106,20 @@
 
     <section id="hot-leads-section" class="hot-leads{% if not hot_leads %} hidden{% endif %}">
       <h2>Act Now — High Priority</h2>
-      <p>Large awards expiring within 3 weeks. Research incumbent, contact CO, watch SAM.gov for solicitation.</p>
+      <p>High est. annual value contracts expiring within 3 weeks. Research incumbent, contact CO, watch SAM.gov for solicitation.</p>
       <div class="hot-grid" id="hot-leads-grid">
         {% for lead in hot_leads %}
         <article class="hot-card">
           <div class="hot-top">
             <span class="priority priority-high">High</span>
-            <span class="amount">{{ lead.award_amount | currency }}</span>
+            <span class="amount">{{ lead.estimated_annual_value | currency }}<span class="amount-suffix">/yr est.</span></span>
           </div>
           <h3>{{ lead.contract_name }}</h3>
+          {% if lead.pop_flag %}
+          <p class="pop-flag pop-flag-{{ 'final' if 'Final' in lead.pop_flag else 'options' }}">{{ lead.pop_flag }}</p>
+          {% endif %}
           <p class="hot-meta">{{ lead.expiration_date }} · {{ lead.expiration_date | days_until }} days · {{ lead.agency }}</p>
+          <p class="hot-meta-secondary">Total obligation: {{ lead.total_obligation | currency }}</p>
           <p class="hot-incumbent">Incumbent: {{ lead.incumbent_name }}</p>
           {% if lead.generated_internal_id %}
           <a href="{{ lead.generated_internal_id | award_url }}" target="_blank" rel="noopener" class="link">View on USAspending →</a>
@@ -129,7 +132,7 @@
     <section class="table-section">
       <div class="table-header">
         <h2>Pursuit Pipeline</h2>
-        <p>Sorted by pursuit score — urgency + deal size. Won/Lost hidden from active view.</p>
+        <p>Sorted by pursuit score — urgency + est. annual value. Won/Lost hidden from active view.</p>
       </div>
 
       {% if contracts %}
@@ -139,7 +142,7 @@
             <tr>
               <th>Priority</th>
               <th>Expires</th>
-              <th>Award Amount</th>
+              <th>Est. Annual Value</th>
               <th>Contract</th>
               <th>Competition Intel</th>
               <th>Agency / Office</th>
@@ -151,16 +154,22 @@
           </thead>
           <tbody id="contracts-tbody">
             {% for contract in contracts %}
-            {% set tier = contract.award_amount | priority_tier(contract.expiration_date) %}
+            {% set tier = contract.estimated_annual_value | priority_tier(contract.expiration_date) %}
             <tr class="tier-{{ tier | lower }} {% if contract.expiration_date | days_until <= 14 %}urgent{% endif %}">
               <td><span class="priority priority-{{ tier | lower }}">{{ tier }}</span></td>
               <td>
                 <strong>{{ contract.expiration_date }}</strong>
                 <span class="days-tag">{{ contract.expiration_date | days_until }}d</span>
               </td>
-              <td class="amount">{{ contract.award_amount | currency }}</td>
+              <td class="amount">
+                <div class="amount-primary">{{ contract.estimated_annual_value | currency }}<span class="amount-suffix">/yr</span></div>
+                <div class="amount-secondary">{{ contract.total_obligation | currency }} total</div>
+              </td>
               <td>
                 <div class="contract-name">{{ contract.contract_name }}</div>
+                {% if contract.pop_flag %}
+                <div class="pop-flag pop-flag-{{ 'final' if 'Final' in contract.pop_flag else 'options' }}">{{ contract.pop_flag }}</div>
+                {% endif %}
                 <div class="contract-meta">
                   {{ contract.award_id }} · NAICS {{ contract.naics_code }}
                   {% if contract.generated_internal_id %}
@@ -208,7 +217,7 @@
             <tr>
               <th>Priority</th>
               <th>Expires</th>
-              <th>Award Amount</th>
+              <th>Est. Annual Value</th>
               <th>Contract</th>
               <th>Competition Intel</th>
               <th>Agency / Office</th>

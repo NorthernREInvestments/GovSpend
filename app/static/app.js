@@ -27,12 +27,22 @@ function daysUntil(expirationDate) {
   return Math.floor((expiration - today) / 86400000);
 }
 
-function priorityTier(awardAmount, expirationDate) {
+function priorityTier(estimatedAnnualValue, expirationDate) {
   const daysLeft = daysUntil(expirationDate);
-  if (daysLeft <= 21 && awardAmount >= 250000) return "High";
-  if (daysLeft <= 14 && awardAmount >= 100000) return "High";
-  if (daysLeft <= 45 || awardAmount >= 500000) return "Medium";
+  if (daysLeft <= 21 && estimatedAnnualValue >= 125000) return "High";
+  if (daysLeft <= 14 && estimatedAnnualValue >= 75000) return "High";
+  if (daysLeft <= 45 || estimatedAnnualValue >= 175000) return "Medium";
   return "Low";
+}
+
+function popFlagClass(popFlag) {
+  if (!popFlag) return "";
+  return popFlag.includes("Final") ? "final" : "options";
+}
+
+function renderPopFlag(popFlag) {
+  if (!popFlag) return "";
+  return `<div class="pop-flag pop-flag-${popFlagClass(popFlag)}">${escapeHtml(popFlag)}</div>`;
 }
 
 function awardUrl(generatedInternalId) {
@@ -90,7 +100,8 @@ function renderStatusOptions(contract, statuses) {
 }
 
 function renderContractRow(contract, statuses) {
-  const tier = priorityTier(contract.award_amount, contract.expiration_date);
+  const annualValue = contract.estimated_annual_value || 0;
+  const tier = priorityTier(annualValue, contract.expiration_date);
   const tierLower = tier.toLowerCase();
   const days = daysUntil(contract.expiration_date);
   const urgentClass = days <= 14 ? " urgent" : "";
@@ -105,9 +116,13 @@ function renderContractRow(contract, statuses) {
         <strong>${escapeHtml(contract.expiration_date)}</strong>
         <span class="days-tag">${days}d</span>
       </td>
-      <td class="amount">${formatCurrency(contract.award_amount)}</td>
+      <td class="amount">
+        <div class="amount-primary">${formatCurrency(annualValue)}<span class="amount-suffix">/yr</span></div>
+        <div class="amount-secondary">${formatCurrency(contract.total_obligation || contract.award_amount)} total</div>
+      </td>
       <td>
         <div class="contract-name">${escapeHtml(contract.contract_name)}</div>
+        ${renderPopFlag(contract.pop_flag)}
         <div class="contract-meta">
           ${escapeHtml(contract.award_id)} · NAICS ${escapeHtml(contract.naics_code)}${awardLink}
         </div>
@@ -142,10 +157,12 @@ function renderHotLead(lead) {
     <article class="hot-card">
       <div class="hot-top">
         <span class="priority priority-high">High</span>
-        <span class="amount">${formatCurrency(lead.award_amount)}</span>
+        <span class="amount">${formatCurrency(lead.estimated_annual_value || 0)}<span class="amount-suffix">/yr est.</span></span>
       </div>
       <h3>${escapeHtml(lead.contract_name)}</h3>
+      ${renderPopFlag(lead.pop_flag)}
       <p class="hot-meta">${escapeHtml(lead.expiration_date)} · ${days} days · ${escapeHtml(lead.agency)}</p>
+      <p class="hot-meta-secondary">Total obligation: ${formatCurrency(lead.total_obligation || lead.award_amount)}</p>
       <p class="hot-incumbent">Incumbent: ${escapeHtml(lead.incumbent_name)}</p>
       ${link}
     </article>
