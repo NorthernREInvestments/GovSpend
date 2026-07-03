@@ -23,6 +23,8 @@ EMPTY_ENRICHMENT: dict[str, str] = {
     "solicitation_number": "",
 }
 
+WATCHLIST_ONLY_FIELDS = frozenset({"location_city", "location_state"})
+
 
 class ContractSyncService:
     def __init__(self, db: Session) -> None:
@@ -180,7 +182,7 @@ class ContractSyncService:
             return 1
 
         contract = Contract(
-            **fields,
+            **{key: value for key, value in fields.items() if key not in WATCHLIST_ONLY_FIELDS},
             status=ContractStatus.WATCHING,
             last_synced_at=now,
             created_at=now,
