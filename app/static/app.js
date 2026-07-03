@@ -5,7 +5,22 @@ function showToast(message) {
   setTimeout(() => toast.classList.add("hidden"), 4000);
 }
 
-document.getElementById("refresh-btn")?.addEventListener("click", async () => {
+async function saveSettings() {
+  const minAwardAmount = Number(document.getElementById("min-award-amount").value);
+  const expirationDays = Number(document.getElementById("expiration-days").value);
+  const response = await fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      min_award_amount: minAwardAmount,
+      expiration_days: expirationDays,
+    }),
+  });
+  if (!response.ok) throw new Error("Failed to save settings");
+  return response.json();
+}
+
+async function runSync() {
   const btn = document.getElementById("refresh-btn");
   btn.disabled = true;
   btn.textContent = "Syncing…";
@@ -13,14 +28,43 @@ document.getElementById("refresh-btn")?.addEventListener("click", async () => {
     const response = await fetch("/api/sync/run", { method: "POST" });
     if (!response.ok) throw new Error("Sync failed");
     const data = await response.json();
-    showToast(`Sync complete: ${data.contracts_found} found, ${data.contracts_upserted} new`);
+    showToast(`Sync complete: ${data.contracts_found} found, ${data.contracts_upserted} updated`);
     window.location.reload();
   } catch (error) {
     showToast(error.message || "Sync failed");
     btn.disabled = false;
     btn.textContent = "Refresh Now";
   }
+}
+
+document.getElementById("settings-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const btn = document.getElementById("save-settings-btn");
+  btn.disabled = true;
+  try {
+    await saveSettings();
+    showToast("Settings saved — click Refresh Now to apply");
+  } catch (error) {
+    showToast(error.message || "Failed to save settings");
+  } finally {
+    btn.disabled = false;
+  }
 });
+
+document.getElementById("save-and-refresh-btn")?.addEventListener("click", async () => {
+  const btn = document.getElementById("save-and-refresh-btn");
+  btn.disabled = true;
+  try {
+    await saveSettings();
+    showToast("Settings saved — syncing…");
+    await runSync();
+  } catch (error) {
+    showToast(error.message || "Failed to save settings");
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("refresh-btn")?.addEventListener("click", runSync);
 
 document.querySelectorAll(".status-select").forEach((select) => {
   select.addEventListener("change", async (event) => {

@@ -12,7 +12,10 @@
       <div>
         <p class="eyebrow">Government Contract Intelligence</p>
         <h1>GovSpend</h1>
-        <p class="subtitle">Prioritized recompete opportunities · 60-day window · $50K+ · target NAICS</p>
+        <p class="subtitle" id="settings-subtitle">
+          Prioritized recompete opportunities · {{ app_settings.expiration_days }}-day window ·
+          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}+ · target NAICS
+        </p>
       </div>
       <div class="header-actions">
         <a href="/api/contracts/export" class="btn btn-secondary">Export CSV</a>
@@ -30,6 +33,32 @@
   </header>
 
   <main class="container">
+    <section class="settings-panel">
+      <div class="settings-header">
+        <h2>Search Settings</h2>
+        <p>Adjust filters, then save and refresh to pull new contracts from USAspending.</p>
+      </div>
+      <form id="settings-form" class="settings-form">
+        <label>
+          Minimum contract value
+          <div class="input-with-prefix">
+            <span>$</span>
+            <input type="number" id="min-award-amount" name="min_award_amount"
+              min="1000" step="1000" value="{{ app_settings.min_award_amount | int }}" required />
+          </div>
+        </label>
+        <label>
+          Expiring within (days)
+          <input type="number" id="expiration-days" name="expiration_days"
+            min="1" max="365" value="{{ app_settings.expiration_days }}" required />
+        </label>
+        <div class="settings-actions">
+          <button type="submit" class="btn btn-secondary" id="save-settings-btn">Save Settings</button>
+          <button type="button" class="btn btn-primary" id="save-and-refresh-btn">Save &amp; Refresh</button>
+        </div>
+      </form>
+    </section>
+
     <section class="stats-grid">
       <article class="stat-card stat-primary">
         <p class="stat-label">Actionable Pipeline Value</p>

@@ -19,6 +19,7 @@ from app.services.scoring import priority_tier, usaspending_award_url
 from app.database import SessionLocal, get_db
 from app.models import Contract, ContractStatus, SyncLog
 from app.routers import contracts
+from app.services.app_settings import get_or_create_app_settings
 from app.services.sync import ContractSyncService
 
 logging.basicConfig(level=logging.INFO)
@@ -129,6 +130,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     latest_sync = (
         db.query(SyncLog).order_by(SyncLog.started_at.desc()).first()
     )
+    app_settings = get_or_create_app_settings(db)
 
     return templates.TemplateResponse(
         request,
@@ -136,6 +138,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         {
             "contracts": contract_rows,
             "hot_leads": hot_leads,
+            "app_settings": app_settings,
             "stats": {
                 "total_contracts": len(contract_rows),
                 "total_value": total_value,

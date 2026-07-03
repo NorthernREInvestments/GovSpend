@@ -54,3 +54,16 @@ class DashboardStats(BaseModel):
     total_value: float
     expiring_this_month: int
     by_status: dict[str, int]
+
+
+class AppSettingsRead(BaseModel):
+    min_award_amount: float
+    expiration_days: int
+    updated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class AppSettingsUpdate(BaseModel):
+    min_award_amount: float = Field(ge=1_000, le=500_000_000)
+    expiration_days: int = Field(ge=1, le=365)

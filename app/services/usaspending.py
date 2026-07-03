@@ -55,8 +55,9 @@ def parse_end_date(value: str | None) -> date | None:
 
 
 class USAspendingClient:
-    def __init__(self) -> None:
+    def __init__(self, min_award_amount: float | None = None) -> None:
         self.base_url = settings.usaspending_base_url.rstrip("/")
+        self.min_award_amount = min_award_amount if min_award_amount is not None else settings.min_award_amount
 
     async def search_expiring_contracts(
         self,
@@ -101,7 +102,7 @@ class USAspendingClient:
                 "filters": {
                     "award_type_codes": ["A", "B", "C", "D"],
                     "naics_codes": {"require": [naics_code]},
-                    "award_amounts": [{"lower_bound": settings.min_award_amount}],
+                    "award_amounts": [{"lower_bound": self.min_award_amount}],
                     "time_period": [
                         {
                             "start_date": mod_start.isoformat(),

@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from app.database import Base, engine
 from app.migrations import run_migrations
+from app.services.app_settings import get_or_create_app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,13 @@ def init_database(max_attempts: int = 30, delay_seconds: float = 2.0) -> bool:
                 conn.execute(text("SELECT 1"))
             Base.metadata.create_all(bind=engine)
             run_migrations()
+            from app.database import SessionLocal
+
+            db = SessionLocal()
+            try:
+                get_or_create_app_settings(db)
+            finally:
+                db.close()
             _db_ready = True
             logger.info("Database ready")
             return True

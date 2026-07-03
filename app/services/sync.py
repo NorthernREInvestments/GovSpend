@@ -3,8 +3,9 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.models import Contract, ContractStatus, SyncLog
+from app.services.app_settings import get_sync_config
 from app.services.scoring import compute_pursuit_score
 from app.services.usaspending import USAspendingClient, map_award_to_contract_fields
 
@@ -14,16 +15,20 @@ logger = logging.getLogger(__name__)
 class ContractSyncService:
     def __init__(self, db: Session) -> None:
         self.db = db
-        self.client = USAspendingClient()
+        self.sync_config = get_sync_config(db)
+        self.client = USAspendingClient(min_award_amount=self.sync_config.min_award_amount)
 
     async def run_sync(self) -> SyncLog:
+        self.sync_config = get_sync_config(self.db)
+        self.client = USAspendingClient(min_award_amount=self.sync_config.min_award_amount)
+
         log = SyncLog(status="running", started_at=datetime.utcnow())
         self.db.add(log)
         self.db.commit()
         self.db.refresh(log)
 
         window_start = date.today()
-        window_end = window_start + timedelta(days=settings.expiration_days)
+        window_end = window_start + timedelta(days=self.sync_config.expiration_days)
 
         try:
             awards, pages_scanned = await self.client.search_expiring_contracts(window_start, window_end)
@@ -37,10 +42,14 @@ class ContractSyncService:
                 upserted += self._upsert_contract(fields)
 
             expired_removed = self._remove_stale_contracts(window_start)
+            out_of_window_removed = self._remove_out_of_window_contracts(window_end)
             log.contracts_upserted = upserted
             log.pages_scanned = pages_scanned
             log.status = "success"
-            log.message = f"Upserted {upserted} contracts. Removed {expired_removed} expired."
+            log.message = (
+                f"Upserted {upserted} contracts. Removed {expired_removed} expired "
+                f"and {out_of_window_removed} outside {self.sync_config.expiration_days}-day window."
+            )
         except Exception as exc:
             logger.exception("Contract sync failed")
             log.status = "failed"
@@ -107,6 +116,17 @@ class ContractSyncService:
             self.db.delete(contract)
         self.db.commit()
         return len(stale)
+
+    def _remove_out_of_window_contracts(self, window_end: date) -> int:
+        outside = (
+            self.db.query(Contract)
+            .filter(Contract.expiration_date > window_end)
+            .all()
+        )
+        for contract in outside:
+            self.db.delete(contract)
+        self.db.commit()
+        return len(outside)
 
     def get_latest_sync_log(self) -> SyncLog | None:
         return (

@@ -9,12 +9,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Contract, ContractStatus
 from app.schemas import (
+    AppSettingsRead,
+    AppSettingsUpdate,
     ContractNotesUpdate,
     ContractRead,
     ContractStatusUpdate,
     DashboardStats,
     SyncStatusRead,
 )
+from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.scoring import priority_tier, usaspending_award_url
 from app.services.sync import ContractSyncService
 
@@ -26,6 +29,20 @@ def _pursuit_query(db: Session):
         Contract.pursuit_score.desc(),
         Contract.expiration_date.asc(),
         Contract.award_amount.desc(),
+    )
+
+
+@router.get("/settings", response_model=AppSettingsRead)
+def get_settings(db: Session = Depends(get_db)):
+    return get_or_create_app_settings(db)
+
+
+@router.patch("/settings", response_model=AppSettingsRead)
+def patch_settings(payload: AppSettingsUpdate, db: Session = Depends(get_db)):
+    return update_app_settings(
+        db,
+        min_award_amount=payload.min_award_amount,
+        expiration_days=payload.expiration_days,
     )
 
 

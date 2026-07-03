@@ -70,6 +70,70 @@ h1 {
   padding: 1.5rem;
 }
 
+.settings-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.settings-header h2 {
+  margin: 0;
+}
+
+.settings-header p {
+  margin: 0.35rem 0 1rem;
+  color: var(--muted);
+}
+
+.settings-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  align-items: flex-end;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 200px;
+}
+
+.settings-form input {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  font-size: 1rem;
+}
+
+.input-with-prefix {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.input-with-prefix span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.input-with-prefix input {
+  flex: 1;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

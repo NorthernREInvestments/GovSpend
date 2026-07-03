@@ -63,3 +63,12 @@ class SyncLog(Base):
     pages_scanned: Mapped[int] = mapped_column(default=0)
     status: Mapped[str] = mapped_column(String(32), default="running")
     message: Mapped[str | None] = mapped_column(Text)
+
+
+class AppSettings(Base):
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    min_award_amount: Mapped[float] = mapped_column(Float, nullable=False, default=50_000)
+    expiration_days: Mapped[int] = mapped_column(nullable=False, default=60)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
