@@ -34,8 +34,14 @@
 
   <main class="container">
     {% if sync_running %}
-    <div class="sync-banner">
-      <strong>Sync in progress</strong> — pulling contracts from USAspending. Data will appear in batches; refresh the page in a minute.
+    <div id="sync-banner" class="sync-banner">
+      <strong>Sync in progress</strong> —
+      <span id="sync-progress-text">pulling contracts from USAspending…</span>
+    </div>
+    {% else %}
+    <div id="sync-banner" class="sync-banner hidden">
+      <strong>Sync in progress</strong> —
+      <span id="sync-progress-text">pulling contracts from USAspending…</span>
     </div>
     {% endif %}
 
@@ -68,27 +74,26 @@
     <section class="stats-grid">
       <article class="stat-card stat-primary">
         <p class="stat-label">Actionable Pipeline Value</p>
-        <p class="stat-value">{{ stats.total_value | currency }}</p>
+        <p class="stat-value" id="stat-total-value">{{ stats.total_value | currency }}</p>
       </article>
       <article class="stat-card">
         <p class="stat-label">Opportunities</p>
-        <p class="stat-value">{{ stats.total_contracts }}</p>
+        <p class="stat-value" id="stat-total-contracts">{{ stats.total_contracts }}</p>
       </article>
       <article class="stat-card">
         <p class="stat-label">Expiring This Month</p>
-        <p class="stat-value">{{ stats.expiring_this_month }}</p>
+        <p class="stat-value" id="stat-expiring-month">{{ stats.expiring_this_month }}</p>
       </article>
       <article class="stat-card">
         <p class="stat-label">Actively Pursuing</p>
-        <p class="stat-value">{{ stats.by_status.get('Pursuing', 0) }}</p>
+        <p class="stat-value" id="stat-pursuing">{{ stats.by_status.get('Pursuing', 0) }}</p>
       </article>
     </section>
 
-    {% if hot_leads %}
-    <section class="hot-leads">
+    <section id="hot-leads-section" class="hot-leads{% if not hot_leads %} hidden{% endif %}">
       <h2>Act Now — High Priority</h2>
       <p>Large awards expiring within 3 weeks. Research incumbent, contact CO, watch SAM.gov for solicitation.</p>
-      <div class="hot-grid">
+      <div class="hot-grid" id="hot-leads-grid">
         {% for lead in hot_leads %}
         <article class="hot-card">
           <div class="hot-top">
@@ -105,7 +110,6 @@
         {% endfor %}
       </div>
     </section>
-    {% endif %}
 
     <section class="table-section">
       <div class="table-header">
@@ -114,7 +118,7 @@
       </div>
 
       {% if contracts %}
-      <div class="table-wrap">
+      <div class="table-wrap" id="contracts-table-wrap">
         <table>
           <thead>
             <tr>
@@ -130,7 +134,7 @@
               <th>Notes</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="contracts-tbody">
             {% for contract in contracts %}
             {% set tier = contract.award_amount | priority_tier(contract.expiration_date) %}
             <tr class="tier-{{ tier | lower }} {% if contract.expiration_date | days_until <= 14 %}urgent{% endif %}">
@@ -177,17 +181,42 @@
           </tbody>
         </table>
       </div>
-      {% else %}
-      <div class="empty-state">
+      <div class="empty-state hidden" id="contracts-empty">
         <h3>No opportunities loaded yet</h3>
         <p>Click <strong>Refresh Now</strong> to pull expiring contracts from USAspending.gov.</p>
-        <p class="hint">First sync paginates USAspending and may take several minutes.</p>
+        <p class="hint">Contracts appear in pursuit-score order as each batch is saved.</p>
+      </div>
+      {% else %}
+      <div class="table-wrap hidden" id="contracts-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Priority</th>
+              <th>Expires</th>
+              <th>Award Amount</th>
+              <th>Contract</th>
+              <th>Competition Intel</th>
+              <th>Agency / Office</th>
+              <th>Incumbent</th>
+              <th>CO</th>
+              <th>Status</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="contracts-tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="contracts-empty">
+        <h3>No opportunities loaded yet</h3>
+        <p>Click <strong>Refresh Now</strong> to pull expiring contracts from USAspending.gov.</p>
+        <p class="hint">Contracts appear in pursuit-score order as each batch is saved.</p>
       </div>
       {% endif %}
     </section>
   </main>
 
   <div id="toast" class="toast hidden"></div>
+  <script id="govspend-config" type="application/json">{"statuses": {{ statuses | tojson }}}</script>
   <script src="/static/app.js"></script>
 </body>
 </html>

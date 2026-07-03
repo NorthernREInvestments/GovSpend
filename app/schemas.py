@@ -56,6 +56,12 @@ class DashboardStats(BaseModel):
     by_status: dict[str, int]
 
 
+class DashboardLiveRead(BaseModel):
+    contracts: list[ContractRead]
+    hot_leads: list[ContractRead]
+    stats: DashboardStats
+
+
 class AppSettingsRead(BaseModel):
     min_award_amount: float
     expiration_days: int

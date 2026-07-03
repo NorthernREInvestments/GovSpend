@@ -15,7 +15,6 @@ from app.services.watchlist import (
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 50
 EMPTY_ENRICHMENT: dict[str, str] = {
     "contracting_office": "",
     "co_name": "",
@@ -31,22 +30,30 @@ class ContractSyncService:
         self.sync_config = get_sync_config(db)
         self.client = USAspendingClient(min_award_amount=self.sync_config.min_award_amount)
 
-    async def run_sync(self) -> SyncLog:
-        await acquire_sync_lock(self.db)
+    async def run_sync(self, *, lock_held: bool = False, log_id: int | None = None) -> SyncLog:
+        if not lock_held:
+            await acquire_sync_lock(self.db)
 
         try:
-            return await self._run_sync_locked()
+            return await self._run_sync_locked(log_id=log_id)
         finally:
             release_sync_lock()
 
-    async def _run_sync_locked(self) -> SyncLog:
+    async def _run_sync_locked(self, log_id: int | None = None) -> SyncLog:
         self.sync_config = get_sync_config(self.db)
         self.client = USAspendingClient(min_award_amount=self.sync_config.min_award_amount)
 
-        log = SyncLog(status="running", started_at=datetime.utcnow())
-        self.db.add(log)
-        self.db.commit()
-        self.db.refresh(log)
+        if log_id is not None:
+            log = self.db.query(SyncLog).filter(SyncLog.id == log_id).one()
+        else:
+            log = SyncLog(
+                status="running",
+                started_at=datetime.utcnow(),
+                message="Searching USAspending…",
+            )
+            self.db.add(log)
+            self.db.commit()
+            self.db.refresh(log)
 
         window_start = date.today()
         window_end = window_start + timedelta(days=self.sync_config.expiration_days)
@@ -58,23 +65,39 @@ class ContractSyncService:
                 window_end,
                 f"{self.sync_config.min_award_amount:,.0f}",
             )
-            awards, pages_scanned = await self.client.search_expiring_contracts(window_start, window_end)
-            log.contracts_found = len(awards)
-            self.db.commit()
-            logger.info("Found %s contracts across %s NAICS page scans", len(awards), pages_scanned)
 
+            contracts_found = 0
             upserted = 0
             watchlist_upserted = 0
-            total = len(awards)
+            pages_scanned = 0
 
-            for index, award in enumerate(awards, start=1):
-                fields = map_award_to_contract_fields(award, EMPTY_ENRICHMENT)
-                upserted += self._upsert_contract(fields, commit=False)
-                watchlist_upserted += upsert_watchlist(self.db, fields, commit=False)
+            async for page_batch, pages, naics_code in self.client.stream_expiring_contracts(
+                window_start, window_end
+            ):
+                pages_scanned = pages
 
-                if index % BATCH_SIZE == 0 or index == total:
-                    self.db.commit()
-                    logger.info("Saved %s/%s contracts to database", index, total)
+                for award in page_batch:
+                    fields = map_award_to_contract_fields(award, EMPTY_ENRICHMENT)
+                    upserted += self._upsert_contract(fields, commit=False)
+                    watchlist_upserted += upsert_watchlist(self.db, fields, commit=False)
+
+                contracts_found += len(page_batch)
+                log.contracts_found = contracts_found
+                log.contracts_upserted = upserted
+                log.pages_scanned = pages_scanned
+                log.message = (
+                    f"Loaded {upserted} contracts so far "
+                    f"({pages_scanned} API pages scanned, NAICS {naics_code})…"
+                )
+                self.db.commit()
+
+                if page_batch:
+                    logger.info(
+                        "Saved batch of %s contracts (%s total, page %s)",
+                        len(page_batch),
+                        upserted,
+                        pages_scanned,
+                    )
 
             expired_removed = self._remove_stale_contracts(window_start)
             out_of_window_removed = self._remove_out_of_window_contracts(window_end)

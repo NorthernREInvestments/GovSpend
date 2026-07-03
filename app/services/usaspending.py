@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from datetime import date, timedelta
 from typing import Any
 
@@ -67,42 +68,39 @@ class USAspendingClient:
         self.base_url = settings.usaspending_base_url.rstrip("/")
         self.min_award_amount = min_award_amount if min_award_amount is not None else settings.min_award_amount
 
-    async def search_expiring_contracts(
+    async def stream_expiring_contracts(
         self,
         window_start: date,
         window_end: date,
-    ) -> tuple[list[dict[str, Any]], int]:
-        results: list[dict[str, Any]] = []
-        seen_award_ids: set[str] = set()
+        seen_award_ids: set[str] | None = None,
+    ) -> AsyncIterator[tuple[list[dict[str, Any]], int, str]]:
+        """Yield in-window awards after each API page: (batch, total_pages_scanned, naics_code)."""
+        seen = seen_award_ids if seen_award_ids is not None else set()
         total_pages = 0
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             for naics_code in settings.naics_codes:
-                naics_results, pages = await self._search_naics_window(
+                async for page_batch in self._stream_naics_pages(
                     client=client,
                     naics_code=naics_code,
                     window_start=window_start,
                     window_end=window_end,
-                )
-                total_pages += pages
-                for row in naics_results:
-                    award_id = row.get("Award ID")
-                    if award_id and award_id not in seen_award_ids:
-                        seen_award_ids.add(award_id)
-                        results.append(row)
+                    seen_award_ids=seen,
+                ):
+                    total_pages += 1
+                    yield page_batch, total_pages, naics_code
 
-        return results, total_pages
-
-    async def _search_naics_window(
+    async def _stream_naics_pages(
         self,
         client: httpx.AsyncClient,
         naics_code: str,
         window_start: date,
         window_end: date,
-    ) -> tuple[list[dict[str, Any]], int]:
-        collected: list[dict[str, Any]] = []
+        seen_award_ids: set[str],
+    ) -> AsyncIterator[list[dict[str, Any]]]:
         page = 1
         has_next = True
+        naics_found = 0
         mod_start = date.today() - timedelta(days=730)
 
         while has_next and page <= settings.max_pages_per_sync:
@@ -144,14 +142,20 @@ class USAspendingClient:
             if page_end_dates and min(page_end_dates) > window_end:
                 break
 
+            page_batch: list[dict[str, Any]] = []
             for row in page_results:
                 end_date = parse_end_date(row.get("End Date"))
                 if end_date is None:
                     continue
                 if window_start <= end_date <= window_end:
-                    collected.append(row)
+                    award_id = row.get("Award ID")
+                    if award_id and award_id not in seen_award_ids:
+                        seen_award_ids.add(award_id)
+                        page_batch.append(row)
+                        naics_found += 1
 
             has_next = bool(data.get("page_metadata", {}).get("hasNext"))
+            yield page_batch
             page += 1
             await asyncio.sleep(settings.api_request_delay_seconds)
 
@@ -159,9 +163,25 @@ class USAspendingClient:
             "NAICS %s: scanned %s pages, found %s contracts in window",
             naics_code,
             page - 1,
-            len(collected),
+            naics_found,
         )
-        return collected, page - 1
+
+    async def search_expiring_contracts(
+        self,
+        window_start: date,
+        window_end: date,
+    ) -> tuple[list[dict[str, Any]], int]:
+        results: list[dict[str, Any]] = []
+        seen_award_ids: set[str] = set()
+        total_pages = 0
+
+        async for page_batch, pages, _naics in self.stream_expiring_contracts(
+            window_start, window_end, seen_award_ids
+        ):
+            total_pages = pages
+            results.extend(page_batch)
+
+        return results, total_pages
 
     async def enrich_award(self, generated_internal_id: str) -> dict[str, str]:
         empty = {

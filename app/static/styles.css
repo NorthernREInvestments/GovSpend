@@ -79,6 +79,10 @@ h1 {
   color: #93c5fd;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .settings-panel {
   background: var(--surface);
   border: 1px solid var(--border);

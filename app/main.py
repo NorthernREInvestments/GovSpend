@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.startup import init_database, is_db_ready
+from app.services.dashboard_data import build_dashboard_data
 from app.services.scoring import priority_tier, usaspending_award_url
 from app.database import SessionLocal, get_db
 from app.models import Contract, ContractStatus, SyncLog
@@ -129,32 +130,7 @@ templates.env.filters["award_url"] = usaspending_award_url
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
-    all_contracts = (
-        db.query(Contract)
-        .order_by(Contract.pursuit_score.desc(), Contract.expiration_date.asc())
-        .all()
-    )
-    actionable = [
-        c for c in all_contracts
-        if c.status not in (ContractStatus.WON, ContractStatus.LOST)
-    ]
-    contract_rows = actionable or all_contracts
-    hot_leads = [c for c in contract_rows if priority_tier(c.award_amount, c.expiration_date) == "High"][:5]
-
-    today = date.today()
-    if today.month == 12:
-        month_end = date(today.year, 12, 31)
-    else:
-        month_end = date(today.year, today.month + 1, 1) - timedelta(days=1)
-
-    total_value = sum(c.award_amount for c in contract_rows)
-    expiring_this_month = sum(
-        1 for c in contract_rows if today <= c.expiration_date <= month_end
-    )
-    by_status = {status.value: 0 for status in ContractStatus}
-    for contract in contract_rows:
-        by_status[contract.status.value] += 1
-
+    data = build_dashboard_data(db)
     latest_sync = (
         db.query(SyncLog).order_by(SyncLog.started_at.desc()).first()
     )
@@ -165,15 +141,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         request,
         "dashboard.html",
         {
-            "contracts": contract_rows,
-            "hot_leads": hot_leads,
+            "contracts": data["contracts"],
+            "hot_leads": data["hot_leads"],
             "app_settings": app_settings,
-            "stats": {
-                "total_contracts": len(contract_rows),
-                "total_value": total_value,
-                "expiring_this_month": expiring_this_month,
-                "by_status": by_status,
-            },
+            "stats": data["stats"].model_dump(),
             "statuses": [status.value for status in ContractStatus],
             "latest_sync": latest_sync,
             "sync_running": sync_running,

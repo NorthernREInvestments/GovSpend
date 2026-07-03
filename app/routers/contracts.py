@@ -1,19 +1,22 @@
+import asyncio
 import csv
 import io
+import logging
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models import Contract, ContractStatus, Watchlist, WatchlistPriority, WatchlistStatus
+from app.database import SessionLocal, get_db
+from app.models import Contract, ContractStatus, SyncLog, Watchlist, WatchlistPriority, WatchlistStatus
 from app.schemas import (
     AppSettingsRead,
     AppSettingsUpdate,
     ContractNotesUpdate,
     ContractRead,
     ContractStatusUpdate,
+    DashboardLiveRead,
     DashboardStats,
     SyncStatusRead,
     CleanupLogRead,
@@ -22,21 +25,30 @@ from app.schemas import (
     WatchlistMatchUpdateResponse,
     WatchlistStatusUpdate,
 )
+from app.services.dashboard_data import build_dashboard_data, pursuit_contracts_query
 from app.services.govtracker import apply_govtracker_match, find_watchlist_matches
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.cleanup import CleanupService
 from app.services.scoring import priority_tier, usaspending_award_url
 from app.services.sync import ContractSyncService
-from app.services.sync_lock import SyncInProgressError
+from app.services.sync_lock import SyncInProgressError, acquire_sync_lock
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["contracts"])
 
 
 def _pursuit_query(db: Session):
-    return db.query(Contract).order_by(
-        Contract.pursuit_score.desc(),
-        Contract.expiration_date.asc(),
-        Contract.award_amount.desc(),
+    return pursuit_contracts_query(db)
+
+
+@router.get("/dashboard/live", response_model=DashboardLiveRead)
+def dashboard_live(db: Session = Depends(get_db)):
+    data = build_dashboard_data(db)
+    return DashboardLiveRead(
+        contracts=[ContractRead.model_validate(contract) for contract in data["contracts"]],
+        hot_leads=[ContractRead.model_validate(lead) for lead in data["hot_leads"]],
+        stats=data["stats"],
     )
 
 
@@ -323,11 +335,10 @@ def sync_status(db: Session = Depends(get_db)):
     )
 
 
-@router.post("/sync/run", response_model=SyncStatusRead)
+@router.post("/sync/run", response_model=SyncStatusRead, status_code=status.HTTP_202_ACCEPTED)
 async def run_sync(db: Session = Depends(get_db)):
-    service = ContractSyncService(db)
     try:
-        log = await service.run_sync()
+        await acquire_sync_lock(db)
     except SyncInProgressError as exc:
         running = exc.log
         raise HTTPException(
@@ -336,13 +347,35 @@ async def run_sync(db: Session = Depends(get_db)):
                 "message": "Sync already in progress",
                 "started_at": running.started_at.isoformat() if running and running.started_at else None,
                 "contracts_found": running.contracts_found if running else 0,
+                "contracts_upserted": running.contracts_upserted if running else 0,
             },
         ) from exc
+
+    log = SyncLog(
+        status="running",
+        started_at=datetime.utcnow(),
+        message="Searching USAspending…",
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+
+    async def _background_sync(sync_log_id: int) -> None:
+        bg_db = SessionLocal()
+        try:
+            await ContractSyncService(bg_db).run_sync(lock_held=True, log_id=sync_log_id)
+        except Exception:
+            logger.exception("Background contract sync failed")
+        finally:
+            bg_db.close()
+
+    asyncio.create_task(_background_sync(log.id))
+
     return SyncStatusRead(
-        last_sync=log.finished_at or log.started_at,
+        last_sync=log.started_at,
         contracts_found=log.contracts_found,
         contracts_upserted=log.contracts_upserted,
         pages_scanned=log.pages_scanned,
-        status=log.status,
+        status="running",
         message=log.message,
     )
