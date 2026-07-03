@@ -363,9 +363,10 @@ async def run_sync(db: Session = Depends(get_db)):
     async def _background_sync(sync_log_id: int) -> None:
         bg_db = SessionLocal()
         try:
+            logger.info("Background sync task started for log id %s", sync_log_id)
             await ContractSyncService(bg_db).run_sync(lock_held=True, log_id=sync_log_id)
         except Exception:
-            logger.exception("Background contract sync failed")
+            logger.exception("Background contract sync failed for log id %s", sync_log_id)
         finally:
             bg_db.close()
 

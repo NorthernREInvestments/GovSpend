@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 _sync_lock = asyncio.Lock()
 STALE_SYNC_HOURS = 6
+STALE_NO_PROGRESS_MINUTES = 15
 
 
 class SyncInProgressError(Exception):
@@ -18,20 +19,67 @@ class SyncInProgressError(Exception):
         super().__init__("A contract sync is already running")
 
 
+def is_sync_lock_held() -> bool:
+    return _sync_lock.locked()
+
+
+def _fail_running_log(log: SyncLog, message: str) -> None:
+    log.status = "failed"
+    log.message = message
+    log.finished_at = datetime.utcnow()
+
+
 def _mark_stale_running_logs(db: Session) -> None:
-    cutoff = datetime.utcnow() - timedelta(hours=STALE_SYNC_HOURS)
-    stale = (
-        db.query(SyncLog)
-        .filter(SyncLog.status == "running", SyncLog.started_at < cutoff)
-        .all()
-    )
-    for log in stale:
-        log.status = "failed"
-        log.message = "Marked failed — sync exceeded time limit (likely interrupted by deploy)"
-        log.finished_at = datetime.utcnow()
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=STALE_SYNC_HOURS)
+    no_progress_cutoff = now - timedelta(minutes=STALE_NO_PROGRESS_MINUTES)
+    running_logs = db.query(SyncLog).filter(SyncLog.status == "running").all()
+    stale: list[SyncLog] = []
+
+    for log in running_logs:
+        if not is_sync_lock_held():
+            stale.append(log)
+            _fail_running_log(
+                log,
+                "Interrupted — no active sync in this server process (likely redeploy)",
+            )
+            continue
+        if log.started_at < cutoff:
+            stale.append(log)
+            _fail_running_log(
+                log,
+                "Marked failed — sync exceeded time limit (likely interrupted by deploy)",
+            )
+        elif (
+            (log.pages_scanned or 0) == 0
+            and (log.contracts_upserted or 0) == 0
+            and log.started_at < no_progress_cutoff
+        ):
+            stale.append(log)
+            _fail_running_log(
+                log,
+                "Marked failed — sync made no progress (likely interrupted or hung)",
+            )
+
     if stale:
         db.commit()
         logger.warning("Marked %s stale sync log(s) as failed", len(stale))
+
+
+def clear_orphaned_running_syncs(db: Session) -> int:
+    """Mark running sync logs failed when this process is not actively syncing."""
+    running_logs = db.query(SyncLog).filter(SyncLog.status == "running").all()
+    if is_sync_lock_held() or not running_logs:
+        return 0
+
+    for log in running_logs:
+        _fail_running_log(
+            log,
+            "Interrupted — server restarted during sync. Click Refresh Now to run again.",
+        )
+    db.commit()
+    logger.warning("Cleared %s orphaned running sync log(s) on startup", len(running_logs))
+    return len(running_logs)
 
 
 def get_running_sync_log(db: Session) -> SyncLog | None:

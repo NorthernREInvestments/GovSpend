@@ -60,11 +60,14 @@ class ContractSyncService:
 
         try:
             logger.info(
-                "Starting sync — window %s to %s, min award $%s",
+                "Starting sync — window %s to %s, min award $%s (log id %s)",
                 window_start,
                 window_end,
                 f"{self.sync_config.min_award_amount:,.0f}",
+                log.id,
             )
+            log.message = "Contacting USAspending API…"
+            self.db.commit()
 
             contracts_found = 0
             upserted = 0
@@ -90,6 +93,14 @@ class ContractSyncService:
                     f"({pages_scanned} API pages scanned, NAICS {naics_code})…"
                 )
                 self.db.commit()
+
+                logger.info(
+                    "Scanned page %s (NAICS %s) — %s contracts in batch, %s total saved",
+                    pages_scanned,
+                    naics_code,
+                    len(page_batch),
+                    upserted,
+                )
 
                 if page_batch:
                     logger.info(

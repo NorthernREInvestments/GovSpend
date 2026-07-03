@@ -104,6 +104,9 @@ class USAspendingClient:
         mod_start = date.today() - timedelta(days=730)
 
         while has_next and page <= settings.max_pages_per_sync:
+            if page == 1:
+                logger.info("Starting USAspending search for NAICS %s", naics_code)
+
             payload = {
                 "filters": {
                     "award_type_codes": ["A", "B", "C", "D"],

@@ -23,7 +23,7 @@ from app.routers import contracts
 from app.services.app_settings import get_or_create_app_settings
 from app.services.cleanup import CleanupService
 from app.services.sync import ContractSyncService
-from app.services.sync_lock import SyncInProgressError, is_sync_running
+from app.services.sync_lock import SyncInProgressError, clear_orphaned_running_syncs, is_sync_running
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,6 +82,15 @@ async def lifespan(app: FastAPI):
         ready = await asyncio.to_thread(init_database)
         if not ready:
             return
+
+        db = SessionLocal()
+        try:
+            cleared = clear_orphaned_running_syncs(db)
+            if cleared:
+                logger.info("Cleared %s orphaned sync(s) from previous deploy", cleared)
+        finally:
+            db.close()
+
         if settings.sync_on_startup:
             db = SessionLocal()
             try:
