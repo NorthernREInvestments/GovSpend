@@ -63,6 +63,19 @@ Open http://127.0.0.1:8000
 | POST | `/api/sync/run` | Trigger manual sync |
 | GET | `/api/sync/status` | Last sync status |
 
+## Database tables
+
+All GovSpend tables use the `gs_` prefix for shared-database isolation:
+
+| Table | Purpose |
+|-------|---------|
+| `gs_contracts` | Active pipeline |
+| `gs_watchlist` | Watchlist entries |
+| `gs_archived_contracts` | Purged history |
+| `gs_sync_logs` | USAspending sync runs |
+| `gs_cleanup_logs` | Daily purge runs |
+| `gs_app_settings` | Min $ / expiration window |
+
 ## Deploy on Railway
 
 1. Create a new Railway project from this repo

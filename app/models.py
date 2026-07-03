@@ -6,6 +6,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
+# PostgreSQL table names (gs_ prefix for shared-database isolation)
+GS_CONTRACTS = "gs_contracts"
+GS_ARCHIVED_CONTRACTS = "gs_archived_contracts"
+GS_CLEANUP_LOGS = "gs_cleanup_logs"
+GS_SYNC_LOGS = "gs_sync_logs"
+GS_APP_SETTINGS = "gs_app_settings"
+GS_WATCHLIST = "gs_watchlist"
+
+# PostgreSQL enum type names
+GS_CONTRACT_STATUS = "gs_contract_status"
+GS_WATCHLIST_PRIORITY = "gs_watchlist_priority"
+GS_WATCHLIST_STATUS = "gs_watchlist_status"
+
 
 class ContractStatus(str, enum.Enum):
     WATCHING = "Watching"
@@ -31,11 +44,11 @@ class WatchlistStatus(str, enum.Enum):
 
 
 class Contract(Base):
-    __tablename__ = "contracts"
+    __tablename__ = GS_CONTRACTS
     __table_args__ = (
-        UniqueConstraint("award_id", name="uq_contracts_award_id"),
-        Index("ix_contracts_expiration_date", "expiration_date"),
-        Index("ix_contracts_status", "status"),
+        UniqueConstraint("award_id", name="uq_gs_contracts_award_id"),
+        Index("ix_gs_contracts_expiration_date", "expiration_date"),
+        Index("ix_gs_contracts_status", "status"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -56,7 +69,7 @@ class Contract(Base):
     pursuit_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[ContractStatus] = mapped_column(
-        Enum(ContractStatus, name="contract_status", values_callable=lambda x: [e.value for e in x]),
+        Enum(ContractStatus, name=GS_CONTRACT_STATUS, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=ContractStatus.WATCHING,
     )
@@ -68,7 +81,7 @@ class Contract(Base):
 
 
 class ArchivedContract(Base):
-    __tablename__ = "archived_contracts"
+    __tablename__ = GS_ARCHIVED_CONTRACTS
 
     id: Mapped[int] = mapped_column(primary_key=True)
     original_contract_id: Mapped[int] = mapped_column(nullable=False)
@@ -97,7 +110,7 @@ class ArchivedContract(Base):
 
 
 class CleanupLog(Base):
-    __tablename__ = "cleanup_logs"
+    __tablename__ = GS_CLEANUP_LOGS
 
     id: Mapped[int] = mapped_column(primary_key=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -112,7 +125,7 @@ class CleanupLog(Base):
 
 
 class SyncLog(Base):
-    __tablename__ = "sync_logs"
+    __tablename__ = GS_SYNC_LOGS
 
     id: Mapped[int] = mapped_column(primary_key=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -125,7 +138,7 @@ class SyncLog(Base):
 
 
 class AppSettings(Base):
-    __tablename__ = "app_settings"
+    __tablename__ = GS_APP_SETTINGS
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     min_award_amount: Mapped[float] = mapped_column(Float, nullable=False, default=50_000)
@@ -134,12 +147,12 @@ class AppSettings(Base):
 
 
 class Watchlist(Base):
-    __tablename__ = "watchlist"
+    __tablename__ = GS_WATCHLIST
     __table_args__ = (
-        UniqueConstraint("award_id", name="uq_watchlist_award_id"),
-        Index("ix_watchlist_expiration_date", "expiration_date"),
-        Index("ix_watchlist_priority", "priority"),
-        Index("ix_watchlist_status", "status"),
+        UniqueConstraint("award_id", name="uq_gs_watchlist_award_id"),
+        Index("ix_gs_watchlist_expiration_date", "expiration_date"),
+        Index("ix_gs_watchlist_priority", "priority"),
+        Index("ix_gs_watchlist_status", "status"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -155,11 +168,11 @@ class Watchlist(Base):
     expected_repost_start: Mapped[date] = mapped_column(Date, nullable=False)
     expected_repost_end: Mapped[date] = mapped_column(Date, nullable=False)
     priority: Mapped[WatchlistPriority] = mapped_column(
-        Enum(WatchlistPriority, name="watchlist_priority", values_callable=lambda x: [e.value for e in x]),
+        Enum(WatchlistPriority, name=GS_WATCHLIST_PRIORITY, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     status: Mapped[WatchlistStatus] = mapped_column(
-        Enum(WatchlistStatus, name="watchlist_status", values_callable=lambda x: [e.value for e in x]),
+        Enum(WatchlistStatus, name=GS_WATCHLIST_STATUS, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=WatchlistStatus.WATCHING,
     )
