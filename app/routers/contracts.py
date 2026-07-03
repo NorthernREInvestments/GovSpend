@@ -16,10 +16,12 @@ from app.schemas import (
     ContractStatusUpdate,
     DashboardStats,
     SyncStatusRead,
+    CleanupLogRead,
     WatchlistRead,
     WatchlistStatusUpdate,
 )
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
+from app.services.cleanup import CleanupService
 from app.services.scoring import priority_tier, usaspending_award_url
 from app.services.sync import ContractSyncService
 
@@ -48,6 +50,38 @@ def _watchlist_query(db: Session):
             w.expiration_date,
             -w.award_amount,
         ),
+    )
+
+
+@router.get("/cleanup/status", response_model=CleanupLogRead)
+def cleanup_status(db: Session = Depends(get_db)):
+    log = CleanupService(db).get_latest_log()
+    if not log:
+        return CleanupLogRead(status="never_run")
+    return CleanupLogRead(
+        last_run=log.finished_at or log.started_at,
+        deleted_watching=log.deleted_watching,
+        deleted_lost=log.deleted_lost,
+        flagged_stale=log.flagged_stale,
+        archived_count=log.archived_count,
+        status=log.status,
+        message=log.message,
+        details=log.details,
+    )
+
+
+@router.post("/cleanup/run", response_model=CleanupLogRead)
+def run_cleanup(db: Session = Depends(get_db)):
+    log = CleanupService(db).run_cleanup()
+    return CleanupLogRead(
+        last_run=log.finished_at or log.started_at,
+        deleted_watching=log.deleted_watching,
+        deleted_lost=log.deleted_lost,
+        flagged_stale=log.flagged_stale,
+        archived_count=log.archived_count,
+        status=log.status,
+        message=log.message,
+        details=log.details,
     )
 
 

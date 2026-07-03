@@ -11,6 +11,7 @@ class ContractStatus(str, enum.Enum):
     WATCHING = "Watching"
     ACTIVE = "Active"
     PURSUING = "Pursuing"
+    STALE = "Stale"
     WON = "Won"
     LOST = "Lost"
 
@@ -64,6 +65,50 @@ class Contract(Base):
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
     last_synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ArchivedContract(Base):
+    __tablename__ = "archived_contracts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    original_contract_id: Mapped[int] = mapped_column(nullable=False)
+    award_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    generated_internal_id: Mapped[str | None] = mapped_column(String(256))
+    contract_name: Mapped[str] = mapped_column(Text, nullable=False)
+    award_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    agency: Mapped[str] = mapped_column(String(512), nullable=False)
+    place_of_performance: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    incumbent_name: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
+    contracting_office: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    co_name: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    naics_code: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    set_aside: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    extent_competed: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    solicitation_number: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    pursuit_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status_at_archive: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    archive_reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    archived_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CleanupLog(Base):
+    __tablename__ = "cleanup_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    deleted_watching: Mapped[int] = mapped_column(default=0)
+    deleted_lost: Mapped[int] = mapped_column(default=0)
+    flagged_stale: Mapped[int] = mapped_column(default=0)
+    archived_count: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String(32), default="running")
+    message: Mapped[str | None] = mapped_column(Text)
+    details: Mapped[str | None] = mapped_column(Text)
 
 
 class SyncLog(Base):

@@ -69,6 +69,17 @@ class AppSettingsUpdate(BaseModel):
     expiration_days: int = Field(ge=1, le=365)
 
 
+class CleanupLogRead(BaseModel):
+    last_run: datetime | None = None
+    deleted_watching: int = 0
+    deleted_lost: int = 0
+    flagged_stale: int = 0
+    archived_count: int = 0
+    status: str = "unknown"
+    message: str | None = None
+    details: str | None = None
+
+
 class WatchlistRead(BaseModel):
     id: int
     contract_name: str

@@ -22,3 +22,15 @@ def run_migrations() -> None:
         for name, col_type in NEW_COLUMNS:
             if name not in existing:
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {name} {col_type}"))
+
+        stale_exists = conn.execute(
+            text(
+                """
+                SELECT 1 FROM pg_enum e
+                JOIN pg_type t ON e.enumtypid = t.oid
+                WHERE t.typname = 'contract_status' AND e.enumlabel = 'Stale'
+                """
+            )
+        ).scalar()
+        if not stale_exists:
+            conn.execute(text("ALTER TYPE contract_status ADD VALUE 'Stale'"))

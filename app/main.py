@@ -20,6 +20,7 @@ from app.database import SessionLocal, get_db
 from app.models import Contract, ContractStatus, SyncLog
 from app.routers import contracts
 from app.services.app_settings import get_or_create_app_settings
+from app.services.cleanup import CleanupService
 from app.services.sync import ContractSyncService
 
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,16 @@ def run_scheduled_sync() -> None:
         db.close()
 
 
+def run_scheduled_cleanup() -> None:
+    db = SessionLocal()
+    try:
+        CleanupService(db).run_cleanup()
+    except Exception:
+        logger.exception("Scheduled cleanup failed")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.add_job(
@@ -50,11 +61,19 @@ async def lifespan(app: FastAPI):
         id="daily_contract_sync",
         replace_existing=True,
     )
+    scheduler.add_job(
+        run_scheduled_cleanup,
+        CronTrigger(hour=settings.cleanup_hour, minute=settings.cleanup_minute),
+        id="daily_contract_cleanup",
+        replace_existing=True,
+    )
     scheduler.start()
     logger.info(
-        "Scheduler started — daily sync at %02d:%02d UTC",
+        "Scheduler started — sync at %02d:%02d UTC, cleanup at %02d:%02d UTC",
         settings.refresh_hour,
         settings.refresh_minute,
+        settings.cleanup_hour,
+        settings.cleanup_minute,
     )
 
     async def _init_and_maybe_sync():
@@ -109,7 +128,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .order_by(Contract.pursuit_score.desc(), Contract.expiration_date.asc())
         .all()
     )
-    actionable = [c for c in all_contracts if c.status not in (ContractStatus.WON, ContractStatus.LOST)]
+    actionable = [
+        c for c in all_contracts
+        if c.status not in (ContractStatus.WON, ContractStatus.LOST)
+    ]
     contract_rows = actionable or all_contracts
     hot_leads = [c for c in contract_rows if priority_tier(c.award_amount, c.expiration_date) == "High"][:5]
 

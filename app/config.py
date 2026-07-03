@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     refresh_hour: int = 6
     refresh_minute: int = 0
     sync_on_startup: bool = False
+    cleanup_hour: int = 2
+    cleanup_minute: int = 0
 
     usaspending_base_url: str = "https://api.usaspending.gov"
     min_award_amount: float = 50_000
