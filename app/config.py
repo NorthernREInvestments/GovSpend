@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     api_page_limit: int = 100
     api_request_delay_seconds: float = 0.25
     max_pages_per_sync: int = 500
+    naics_parallel_limit: int = 8
 
 
 settings = Settings()

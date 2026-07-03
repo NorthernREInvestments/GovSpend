@@ -74,21 +74,57 @@ class USAspendingClient:
         window_end: date,
         seen_award_ids: set[str] | None = None,
     ) -> AsyncIterator[tuple[list[dict[str, Any]], int, str]]:
-        """Yield in-window awards after each API page: (batch, total_pages_scanned, naics_code)."""
+        """Yield in-window awards after each API page across parallel NAICS scans."""
         seen = seen_award_ids if seen_award_ids is not None else set()
+        dedup_lock = asyncio.Lock()
         total_pages = 0
+        queue: asyncio.Queue[tuple[str, list[dict[str, Any]]] | None] = asyncio.Queue()
+        naics_codes = settings.naics_codes
+        parallel_limit = min(settings.naics_parallel_limit, len(naics_codes))
+        semaphore = asyncio.Semaphore(parallel_limit)
+
+        logger.info(
+            "Starting parallel USAspending search across %s NAICS codes (up to %s at once)",
+            len(naics_codes),
+            parallel_limit,
+        )
+
+        async def scan_naics(client: httpx.AsyncClient, naics_code: str) -> None:
+            async with semaphore:
+                try:
+                    async for page_batch in self._stream_naics_pages(
+                        client=client,
+                        naics_code=naics_code,
+                        window_start=window_start,
+                        window_end=window_end,
+                        seen_award_ids=seen,
+                        dedup_lock=dedup_lock,
+                    ):
+                        await queue.put((naics_code, page_batch))
+                finally:
+                    await queue.put(None)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            for naics_code in settings.naics_codes:
-                async for page_batch in self._stream_naics_pages(
-                    client=client,
-                    naics_code=naics_code,
-                    window_start=window_start,
-                    window_end=window_end,
-                    seen_award_ids=seen,
-                ):
+            tasks = [
+                asyncio.create_task(scan_naics(client, naics_code))
+                for naics_code in naics_codes
+            ]
+
+            finished = 0
+            try:
+                while finished < len(naics_codes):
+                    item = await queue.get()
+                    if item is None:
+                        finished += 1
+                        continue
+                    naics_code, page_batch = item
                     total_pages += 1
                     yield page_batch, total_pages, naics_code
+            finally:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _stream_naics_pages(
         self,
@@ -97,6 +133,7 @@ class USAspendingClient:
         window_start: date,
         window_end: date,
         seen_award_ids: set[str],
+        dedup_lock: asyncio.Lock | None = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         page = 1
         has_next = True
@@ -152,10 +189,19 @@ class USAspendingClient:
                     continue
                 if window_start <= end_date <= window_end:
                     award_id = row.get("Award ID")
-                    if award_id and award_id not in seen_award_ids:
+                    if not award_id:
+                        continue
+                    if dedup_lock is not None:
+                        async with dedup_lock:
+                            if award_id in seen_award_ids:
+                                continue
+                            seen_award_ids.add(award_id)
+                    elif award_id not in seen_award_ids:
                         seen_award_ids.add(award_id)
-                        page_batch.append(row)
-                        naics_found += 1
+                    else:
+                        continue
+                    page_batch.append(row)
+                    naics_found += 1
 
             has_next = bool(data.get("page_metadata", {}).get("hasNext"))
             yield page_batch
