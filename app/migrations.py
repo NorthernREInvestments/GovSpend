@@ -40,6 +40,10 @@ NEW_COLUMNS = [
     ("notes", "TEXT NOT NULL DEFAULT ''"),
 ]
 
+APP_SETTINGS_COLUMNS = [
+    ("max_award_amount", "DOUBLE PRECISION"),
+]
+
 
 def _table_exists(inspector, name: str) -> bool:
     return name in inspector.get_table_names()
@@ -103,3 +107,13 @@ def run_migrations() -> None:
             conn, GS_CONTRACT_STATUS, "Stale"
         ):
             conn.execute(text(f'ALTER TYPE "{GS_CONTRACT_STATUS}" ADD VALUE \'Stale\''))
+
+    if _table_exists(inspector, GS_APP_SETTINGS):
+        settings_columns = {col["name"] for col in inspector.get_columns(GS_APP_SETTINGS)}
+        with engine.begin() as conn:
+            for name, col_type in APP_SETTINGS_COLUMNS:
+                if name not in settings_columns:
+                    conn.execute(
+                        text(f'ALTER TABLE "{GS_APP_SETTINGS}" ADD COLUMN {name} {col_type}')
+                    )
+                    logger.info("Added column %s to %s", name, GS_APP_SETTINGS)

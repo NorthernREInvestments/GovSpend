@@ -176,6 +176,7 @@ def patch_settings(payload: AppSettingsUpdate, db: Session = Depends(get_db)):
     return update_app_settings(
         db,
         min_award_amount=payload.min_award_amount,
+        max_award_amount=payload.max_award_amount,
         expiration_days=payload.expiration_days,
     )
 

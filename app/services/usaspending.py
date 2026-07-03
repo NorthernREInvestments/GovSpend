@@ -64,9 +64,24 @@ def parse_end_date(value: str | None) -> date | None:
 
 
 class USAspendingClient:
-    def __init__(self, min_award_amount: float | None = None) -> None:
+    def __init__(
+        self,
+        min_award_amount: float | None = None,
+        max_award_amount: float | None = None,
+    ) -> None:
         self.base_url = settings.usaspending_base_url.rstrip("/")
-        self.min_award_amount = min_award_amount if min_award_amount is not None else settings.min_award_amount
+        self.min_award_amount = (
+            min_award_amount if min_award_amount is not None else settings.min_award_amount
+        )
+        self.max_award_amount = (
+            max_award_amount if max_award_amount is not None else settings.max_award_amount
+        )
+
+    def _award_amount_filter(self) -> list[dict[str, float]]:
+        amount_filter: dict[str, float] = {"lower_bound": self.min_award_amount}
+        if self.max_award_amount is not None:
+            amount_filter["upper_bound"] = self.max_award_amount
+        return [amount_filter]
 
     async def stream_expiring_contracts(
         self,
@@ -148,7 +163,7 @@ class USAspendingClient:
                 "filters": {
                     "award_type_codes": ["A", "B", "C", "D"],
                     "naics_codes": {"require": [naics_code]},
-                    "award_amounts": [{"lower_bound": self.min_award_amount}],
+                    "award_amounts": self._award_amount_filter(),
                     "time_period": [
                         {
                             "start_date": mod_start.isoformat(),
@@ -188,6 +203,12 @@ class USAspendingClient:
                 if end_date is None:
                     continue
                 if window_start <= end_date <= window_end:
+                    award_amount = float(row.get("Award Amount") or 0)
+                    if (
+                        self.max_award_amount is not None
+                        and award_amount > self.max_award_amount
+                    ):
+                        continue
                     award_id = row.get("Award ID")
                     if not award_id:
                         continue

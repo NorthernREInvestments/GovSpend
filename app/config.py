@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     usaspending_base_url: str = "https://api.usaspending.gov"
     min_award_amount: float = 50_000
+    max_award_amount: float | None = None
     expiration_days: int = 60
     naics_codes: list[str] = [
         "561720",

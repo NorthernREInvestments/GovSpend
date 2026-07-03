@@ -211,16 +211,26 @@ async function refreshDashboard() {
 
 async function saveSettings() {
   const minAwardAmount = Number(document.getElementById("min-award-amount").value);
+  const maxAwardRaw = document.getElementById("max-award-amount").value.trim();
+  const maxAwardAmount = maxAwardRaw ? Number(maxAwardRaw) : null;
   const expirationDays = Number(document.getElementById("expiration-days").value);
   const response = await fetch("/api/settings", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       min_award_amount: minAwardAmount,
+      max_award_amount: maxAwardAmount,
       expiration_days: expirationDays,
     }),
   });
-  if (!response.ok) throw new Error("Failed to save settings");
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    const detail = error?.detail;
+    if (Array.isArray(detail)) {
+      throw new Error(detail.map((item) => item.msg).join(" "));
+    }
+    throw new Error("Failed to save settings");
+  }
   return response.json();
 }
 

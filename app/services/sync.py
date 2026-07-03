@@ -30,7 +30,10 @@ class ContractSyncService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.sync_config = get_sync_config(db)
-        self.client = USAspendingClient(min_award_amount=self.sync_config.min_award_amount)
+        self.client = USAspendingClient(
+            min_award_amount=self.sync_config.min_award_amount,
+            max_award_amount=self.sync_config.max_award_amount,
+        )
 
     async def run_sync(self, *, lock_held: bool = False, log_id: int | None = None) -> SyncLog:
         if not lock_held:
@@ -43,7 +46,10 @@ class ContractSyncService:
 
     async def _run_sync_locked(self, log_id: int | None = None) -> SyncLog:
         self.sync_config = get_sync_config(self.db)
-        self.client = USAspendingClient(min_award_amount=self.sync_config.min_award_amount)
+        self.client = USAspendingClient(
+            min_award_amount=self.sync_config.min_award_amount,
+            max_award_amount=self.sync_config.max_award_amount,
+        )
 
         if log_id is not None:
             log = self.db.query(SyncLog).filter(SyncLog.id == log_id).one()
@@ -61,11 +67,17 @@ class ContractSyncService:
         window_end = window_start + timedelta(days=self.sync_config.expiration_days)
 
         try:
+            amount_range = (
+                f"${self.sync_config.min_award_amount:,.0f}"
+                f"–${self.sync_config.max_award_amount:,.0f}"
+                if self.sync_config.max_award_amount is not None
+                else f"${self.sync_config.min_award_amount:,.0f}+"
+            )
             logger.info(
-                "Starting sync — window %s to %s, min award $%s (log id %s)",
+                "Starting sync — window %s to %s, award range %s (log id %s)",
                 window_start,
                 window_end,
-                f"{self.sync_config.min_award_amount:,.0f}",
+                amount_range,
                 log.id,
             )
             log.message = "Contacting USAspending API…"
@@ -120,6 +132,7 @@ class ContractSyncService:
 
             expired_removed = self._remove_stale_contracts(window_start)
             out_of_window_removed = self._remove_out_of_window_contracts(window_end)
+            above_max_removed = self._remove_above_max_contracts(self.sync_config.max_award_amount)
             watchlist_stale = remove_stale_watchlist(self.db, window_start)
             watchlist_outside = remove_out_of_window_watchlist(self.db, window_end)
 
@@ -128,7 +141,8 @@ class ContractSyncService:
             log.status = "success"
             log.message = (
                 f"Upserted {upserted} contracts and {watchlist_upserted} watchlist entries. "
-                f"Removed {expired_removed} expired contracts, {out_of_window_removed} outside window. "
+                f"Removed {expired_removed} expired contracts, {out_of_window_removed} outside window"
+                f"{f', {above_max_removed} above max award' if above_max_removed else ''}. "
                 f"Watchlist cleanup: {watchlist_stale} expired, {watchlist_outside} outside window."
             )
             log.finished_at = datetime.utcnow()
@@ -214,6 +228,19 @@ class ContractSyncService:
             self.db.delete(contract)
         self.db.commit()
         return len(outside)
+
+    def _remove_above_max_contracts(self, max_award_amount: float | None) -> int:
+        if max_award_amount is None:
+            return 0
+        above = (
+            self.db.query(Contract)
+            .filter(Contract.award_amount > max_award_amount)
+            .all()
+        )
+        for contract in above:
+            self.db.delete(contract)
+        self.db.commit()
+        return len(above)
 
     def get_latest_sync_log(self) -> SyncLog | None:
         return (

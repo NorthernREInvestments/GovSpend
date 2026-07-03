@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models import ContractStatus, WatchlistPriority, WatchlistStatus
 
@@ -64,6 +64,7 @@ class DashboardLiveRead(BaseModel):
 
 class AppSettingsRead(BaseModel):
     min_award_amount: float
+    max_award_amount: float | None = None
     expiration_days: int
     updated_at: datetime | None = None
 
@@ -72,7 +73,17 @@ class AppSettingsRead(BaseModel):
 
 class AppSettingsUpdate(BaseModel):
     min_award_amount: float = Field(ge=1_000, le=500_000_000)
+    max_award_amount: float | None = Field(default=None, ge=1_000, le=500_000_000)
     expiration_days: int = Field(ge=1, le=365)
+
+    @model_validator(mode="after")
+    def validate_amount_range(self) -> "AppSettingsUpdate":
+        if (
+            self.max_award_amount is not None
+            and self.max_award_amount < self.min_award_amount
+        ):
+            raise ValueError("Maximum contract value must be greater than or equal to minimum")
+        return self
 
 
 class CleanupLogRead(BaseModel):

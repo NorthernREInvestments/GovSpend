@@ -14,7 +14,12 @@
         <h1>GovSpend</h1>
         <p class="subtitle" id="settings-subtitle">
           Prioritized recompete opportunities · {{ app_settings.expiration_days }}-day window ·
-          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}+ · target NAICS
+          {% if app_settings.max_award_amount %}
+          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}–${{ "{:,.0f}".format(app_settings.max_award_amount) }} ·
+          {% else %}
+          ${{ "{:,.0f}".format(app_settings.min_award_amount) }}+ ·
+          {% endif %}
+          target NAICS
         </p>
       </div>
       <div class="header-actions">
@@ -57,6 +62,16 @@
             <span>$</span>
             <input type="number" id="min-award-amount" name="min_award_amount"
               min="1000" step="1000" value="{{ app_settings.min_award_amount | int }}" required />
+          </div>
+        </label>
+        <label>
+          Maximum contract value <span class="field-hint">(optional)</span>
+          <div class="input-with-prefix">
+            <span>$</span>
+            <input type="number" id="max-award-amount" name="max_award_amount"
+              min="1000" step="1000"
+              value="{% if app_settings.max_award_amount %}{{ app_settings.max_award_amount | int }}{% endif %}"
+              placeholder="No limit" />
           </div>
         </label>
         <label>
