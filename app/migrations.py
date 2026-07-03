@@ -46,6 +46,11 @@ NEW_COLUMNS = [
     ("pop_flag", "VARCHAR(128) NOT NULL DEFAULT ''"),
     ("potential_end_date", "DATE"),
     ("number_of_offers_received", "INTEGER"),
+    ("period_years", "DOUBLE PRECISION"),
+    ("remaining_option_years", "DOUBLE PRECISION"),
+    ("total_runway_years", "DOUBLE PRECISION"),
+    ("recurring_fit", "VARCHAR(128) NOT NULL DEFAULT ''"),
+    ("recurring_fit_score", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
 ]
 
 APP_SETTINGS_COLUMNS = [

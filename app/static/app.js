@@ -27,11 +27,13 @@ function daysUntil(expirationDate) {
   return Math.floor((expiration - today) / 86400000);
 }
 
-function priorityTier(estimatedAnnualValue, expirationDate) {
+function priorityTier(estimatedAnnualValue, expirationDate, recurringFitScore = 0.4) {
   const daysLeft = daysUntil(expirationDate);
+  if (recurringFitScore >= 0.85 && daysLeft <= 60 && estimatedAnnualValue >= 50000) return "High";
   if (daysLeft <= 21 && estimatedAnnualValue >= 125000) return "High";
   if (daysLeft <= 14 && estimatedAnnualValue >= 75000) return "High";
   if (daysLeft <= 45 || estimatedAnnualValue >= 175000) return "Medium";
+  if (recurringFitScore >= 1.0 && estimatedAnnualValue >= 50000) return "Medium";
   return "Low";
 }
 
@@ -43,6 +45,42 @@ function popFlagClass(popFlag) {
 function renderPopFlag(popFlag) {
   if (!popFlag) return "";
   return `<div class="pop-flag pop-flag-${popFlagClass(popFlag)}">${escapeHtml(popFlag)}</div>`;
+}
+
+function recurringFitClass(recurringFit) {
+  if (!recurringFit) return "";
+  if (recurringFit.startsWith("Ideal")) return "ideal";
+  if (recurringFit.startsWith("Strong")) return "strong";
+  if (recurringFit === "Annual recompete" || recurringFit === "Annual period") return "annual";
+  if (recurringFit === "Short period") return "short";
+  return "standard";
+}
+
+function renderRecurringFit(recurringFit) {
+  if (!recurringFit) return "";
+  return `<div class="recurring-fit recurring-fit-${recurringFitClass(recurringFit)}">${escapeHtml(recurringFit)}</div>`;
+}
+
+function formatPeriodYears(years) {
+  if (years == null) return "—";
+  if (years < 1.05) {
+    const months = Math.max(1, Math.round(years * 12));
+    return `${months} mo`;
+  }
+  return `${Number(years).toFixed(1)} yrs`;
+}
+
+function contractLengthSummary(contract) {
+  const parts = [];
+  if (contract.period_years != null) {
+    parts.push(`Period: ${formatPeriodYears(contract.period_years)}`);
+  }
+  if (contract.remaining_option_years) {
+    parts.push(`Options left: ${formatPeriodYears(contract.remaining_option_years)}`);
+  } else if (contract.total_runway_years) {
+    parts.push(`Runway: ${formatPeriodYears(contract.total_runway_years)}`);
+  }
+  return parts.join(" · ");
 }
 
 function awardUrl(generatedInternalId) {
@@ -101,6 +139,10 @@ function renderExpirationDates(contract) {
   if (hasFinalEnd) {
     html += `<div class="end-date-secondary">Final possible: ${escapeHtml(contract.potential_end_date)}</div>`;
   }
+  const lengthSummary = contractLengthSummary(contract);
+  if (lengthSummary) {
+    html += `<div class="end-date-secondary">${escapeHtml(lengthSummary)}</div>`;
+  }
   return html;
 }
 
@@ -134,7 +176,7 @@ function renderStatusOptions(contract, statuses) {
 
 function renderContractRow(contract, statuses) {
   const annualValue = contract.estimated_annual_value > 0 ? contract.estimated_annual_value : 0;
-  const tier = priorityTier(annualValue, contract.expiration_date);
+  const tier = priorityTier(annualValue, contract.expiration_date, contract.recurring_fit_score || 0.4);
   const tierLower = tier.toLowerCase();
   const days = daysUntil(contract.expiration_date);
   const urgentClass = days <= 14 ? " urgent" : "";
@@ -153,6 +195,7 @@ function renderContractRow(contract, statuses) {
       <td>
         <div class="contract-name">${escapeHtml(contract.contract_name)}</div>
         ${renderPopFlag(contract.pop_flag)}
+        ${renderRecurringFit(contract.recurring_fit)}
         <div class="contract-meta">
           ${escapeHtml(contract.award_id)} · NAICS ${escapeHtml(contract.naics_code)}${awardLink}
         </div>
@@ -203,6 +246,7 @@ function renderHotLead(lead) {
       </div>
       <h3>${escapeHtml(lead.contract_name)}</h3>
       ${renderPopFlag(lead.pop_flag)}
+      ${renderRecurringFit(lead.recurring_fit)}
       <p class="hot-meta">${escapeHtml(endLine)} · ${days} days · ${escapeHtml(lead.agency)}</p>
       <p class="hot-meta-secondary">Total obligation: ${formatCurrency(contractTotalValue(lead))}</p>
       ${offersLine}

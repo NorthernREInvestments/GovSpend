@@ -244,6 +244,11 @@ class ContractSyncService:
             existing.base_all_options_value = fields.get("base_all_options_value")
             existing.estimated_annual_value = fields.get("estimated_annual_value", 0.0)
             existing.pop_flag = fields.get("pop_flag", "")
+            existing.period_years = fields.get("period_years")
+            existing.remaining_option_years = fields.get("remaining_option_years")
+            existing.total_runway_years = fields.get("total_runway_years")
+            existing.recurring_fit = fields.get("recurring_fit", "")
+            existing.recurring_fit_score = fields.get("recurring_fit_score", 0.0)
             existing.agency = fields["agency"]
             existing.place_of_performance = fields["place_of_performance"]
             existing.incumbent_name = fields["incumbent_name"]

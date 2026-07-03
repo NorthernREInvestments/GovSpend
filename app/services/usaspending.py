@@ -11,6 +11,7 @@ from app.services.scoring import (
     compute_estimated_annual_value,
     compute_pop_flag,
     compute_pursuit_score,
+    compute_recurring_profile,
 )
 
 logger = logging.getLogger(__name__)
@@ -455,6 +456,14 @@ def map_award_to_contract_fields(
 
     base_exercised = enrichment.get("base_exercised_options_value")
     base_all = enrichment.get("base_all_options_value")
+    potential_end_date = enrichment.get("potential_end_date")
+    pop_flag = compute_pop_flag(base_exercised, base_all)
+    recurring = compute_recurring_profile(
+        start_date=start_date,
+        expiration_date=end_date,
+        potential_end_date=potential_end_date,
+        pop_flag=pop_flag,
+    )
     estimated_annual = compute_estimated_annual_value(total_obligation, start_date, end_date)
     if estimated_annual is None:
         estimated_annual = 0.0
@@ -474,14 +483,19 @@ def map_award_to_contract_fields(
         "base_exercised_options_value": base_exercised,
         "base_all_options_value": base_all,
         "estimated_annual_value": estimated_annual,
-        "pop_flag": compute_pop_flag(base_exercised, base_all),
+        "pop_flag": pop_flag,
+        "period_years": recurring["period_years"],
+        "remaining_option_years": recurring["remaining_option_years"],
+        "total_runway_years": recurring["total_runway_years"],
+        "recurring_fit": recurring["recurring_fit"],
+        "recurring_fit_score": recurring["recurring_fit_score"],
         "agency": row.get("Awarding Agency") or "Unknown Agency",
         "place_of_performance": format_place_of_performance(pop),
         "location_city": location_city,
         "location_state": location_state,
         "incumbent_name": row.get("Recipient Name") or "Unknown",
         "expiration_date": end_date,
-        "potential_end_date": enrichment.get("potential_end_date"),
+        "potential_end_date": potential_end_date,
         "number_of_offers_received": enrichment.get("number_of_offers_received"),
         "contracting_office": contracting_office,
         "co_name": enrichment.get("co_name") or "",
@@ -493,5 +507,6 @@ def map_award_to_contract_fields(
             estimated_annual,
             end_date,
             max_annual_value=max_annual_value,
+            recurring_fit_score=float(recurring["recurring_fit_score"] or 0.4),
         ),
     }

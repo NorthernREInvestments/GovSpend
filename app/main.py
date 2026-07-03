@@ -17,8 +17,10 @@ from app.config import settings
 from app.startup import init_database, is_db_ready
 from app.services.dashboard_data import build_dashboard_data
 from app.services.scoring import (
+    compute_recurring_profile,
     contract_total_obligation,
     effective_annual_value,
+    format_period_years,
     priority_tier,
     usaspending_award_url,
 )
@@ -154,7 +156,55 @@ def _contract_total(contract: Contract) -> float:
 
 
 def _contract_priority_tier(contract: Contract) -> str:
-    return priority_tier(_contract_annual(contract), contract.expiration_date)
+    return priority_tier(
+        _contract_annual(contract),
+        contract.expiration_date,
+        recurring_fit_score=contract.recurring_fit_score or 0.4,
+    )
+
+
+def _contract_length_summary(contract: Contract) -> str:
+    profile = _contract_recurring_profile(contract)
+    parts = []
+    if profile["period_years"] is not None:
+        parts.append(f"Period: {format_period_years(profile['period_years'])}")
+    if profile["remaining_option_years"]:
+        parts.append(
+            f"Options left: {format_period_years(profile['remaining_option_years'])}"
+        )
+    elif profile["total_runway_years"]:
+        parts.append(f"Runway: {format_period_years(profile['total_runway_years'])}")
+    return " · ".join(parts)
+
+
+def _contract_recurring_profile(contract: Contract) -> dict:
+    if contract.recurring_fit:
+        return {
+            "period_years": contract.period_years,
+            "remaining_option_years": contract.remaining_option_years,
+            "total_runway_years": contract.total_runway_years,
+            "recurring_fit": contract.recurring_fit,
+            "recurring_fit_score": contract.recurring_fit_score,
+        }
+    return compute_recurring_profile(
+        start_date=contract.start_date,
+        expiration_date=contract.expiration_date,
+        potential_end_date=contract.potential_end_date,
+        pop_flag=contract.pop_flag,
+    )
+
+
+def _recurring_fit_class(contract: Contract) -> str:
+    fit = _contract_recurring_profile(contract)["recurring_fit"]
+    if fit.startswith("Ideal"):
+        return "ideal"
+    if fit.startswith("Strong"):
+        return "strong"
+    if fit == "Annual recompete" or fit == "Annual period":
+        return "annual"
+    if fit == "Short period":
+        return "short"
+    return "standard"
 
 
 templates.env.filters["currency"] = _format_currency
@@ -162,6 +212,8 @@ templates.env.filters["days_until"] = _days_until
 templates.env.filters["priority_tier"] = _contract_priority_tier
 templates.env.filters["contract_annual"] = _contract_annual
 templates.env.filters["contract_total"] = _contract_total
+templates.env.filters["contract_length_summary"] = _contract_length_summary
+templates.env.filters["recurring_fit_class"] = _recurring_fit_class
 templates.env.filters["award_url"] = usaspending_award_url
 
 

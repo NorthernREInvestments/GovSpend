@@ -118,6 +118,9 @@
           {% if lead.pop_flag %}
           <p class="pop-flag pop-flag-{{ 'final' if 'Final' in lead.pop_flag else 'options' }}">{{ lead.pop_flag }}</p>
           {% endif %}
+          {% if lead.recurring_fit %}
+          <p class="recurring-fit recurring-fit-{{ lead | recurring_fit_class }}">{{ lead.recurring_fit }}</p>
+          {% endif %}
           <p class="hot-meta">
             {% if lead.potential_end_date and lead.potential_end_date != lead.expiration_date %}
             Current end: {{ lead.expiration_date }} · Final possible: {{ lead.potential_end_date }}
@@ -142,7 +145,7 @@
     <section class="table-section">
       <div class="table-header">
         <h2>Pursuit Pipeline</h2>
-        <p>Sorted by pursuit score — urgency + est. annual value. Won/Lost hidden from active view.</p>
+        <p>Sorted by pursuit score — urgency + est. annual value + recurring fit. Ideal: ~1yr periods with multi-year options.</p>
       </div>
 
       {% if contracts %}
@@ -176,6 +179,10 @@
                 {% if contract.potential_end_date and contract.potential_end_date != contract.expiration_date %}
                 <div class="end-date-secondary">Final possible: {{ contract.potential_end_date }}</div>
                 {% endif %}
+                {% set length_summary = contract | contract_length_summary %}
+                {% if length_summary %}
+                <div class="end-date-secondary">{{ length_summary }}</div>
+                {% endif %}
               </td>
               <td class="amount">
                 {% if contract.estimated_annual_value > 0 %}
@@ -189,6 +196,9 @@
                 <div class="contract-name">{{ contract.contract_name }}</div>
                 {% if contract.pop_flag %}
                 <div class="pop-flag pop-flag-{{ 'final' if 'Final' in contract.pop_flag else 'options' }}">{{ contract.pop_flag }}</div>
+                {% endif %}
+                {% if contract.recurring_fit %}
+                <div class="recurring-fit recurring-fit-{{ contract | recurring_fit_class }}">{{ contract.recurring_fit }}</div>
                 {% endif %}
                 <div class="contract-meta">
                   {{ contract.award_id }} · NAICS {{ contract.naics_code }}

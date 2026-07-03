@@ -28,8 +28,12 @@ def sort_pursuit_contracts(contracts: list[Contract], db: Session) -> list[Contr
                 award_amount=contract.award_amount,
                 start_date=contract.start_date,
                 expiration_date=contract.expiration_date,
+                potential_end_date=contract.potential_end_date,
+                pop_flag=contract.pop_flag,
+                recurring_fit_score=contract.recurring_fit_score or None,
                 max_annual_value=max_annual,
             ),
+            -(contract.recurring_fit_score or 0),
             contract.expiration_date,
             -contract.estimated_annual_value,
             -contract.award_amount,
@@ -57,6 +61,7 @@ def build_dashboard_data(db: Session) -> dict:
                 expiration_date=contract.expiration_date,
             ),
             contract.expiration_date,
+            recurring_fit_score=contract.recurring_fit_score or 0.4,
         )
         == "High"
     ][:5]

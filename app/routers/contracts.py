@@ -235,6 +235,10 @@ def export_contracts(db: Session = Depends(get_db)):
         "Est. Annual Value",
         "Total Obligation",
         "PoP Flag",
+        "Recurring Fit",
+        "Period Years",
+        "Options Left Years",
+        "Total Runway Years",
         "Expiration",
         "Potential End",
         "Days Left",
@@ -259,11 +263,20 @@ def export_contracts(db: Session = Depends(get_db)):
     for c in contracts:
         days_left = (c.expiration_date - today).days
         writer.writerow([
-            priority_tier(c.estimated_annual_value, c.expiration_date, today),
+            priority_tier(
+                c.estimated_annual_value,
+                c.expiration_date,
+                recurring_fit_score=c.recurring_fit_score or 0.4,
+                today=today,
+            ),
             c.pursuit_score,
             c.estimated_annual_value,
             c.total_obligation,
             c.pop_flag,
+            c.recurring_fit,
+            c.period_years if c.period_years is not None else "",
+            c.remaining_option_years if c.remaining_option_years is not None else "",
+            c.total_runway_years if c.total_runway_years is not None else "",
             c.expiration_date.isoformat(),
             c.potential_end_date.isoformat() if c.potential_end_date else "",
             days_left,

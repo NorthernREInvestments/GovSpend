@@ -14,6 +14,11 @@ class ContractBase(BaseModel):
     base_exercised_options_value: float | None = None
     base_all_options_value: float | None = None
     pop_flag: str = ""
+    period_years: float | None = None
+    remaining_option_years: float | None = None
+    total_runway_years: float | None = None
+    recurring_fit: str = ""
+    recurring_fit_score: float = 0
     agency: str
     place_of_performance: str
     incumbent_name: str
