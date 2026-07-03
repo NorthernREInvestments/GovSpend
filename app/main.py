@@ -8,17 +8,17 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Depends, Request
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import Base, SessionLocal, engine, get_db
-from app.migrations import run_migrations
+from app.startup import init_database, is_db_ready
+from app.services.scoring import priority_tier, usaspending_award_url
+from app.database import SessionLocal, get_db
 from app.models import Contract, ContractStatus, SyncLog
 from app.routers import contracts
-from app.services.scoring import priority_tier, usaspending_award_url
 from app.services.sync import ContractSyncService
 
 logging.basicConfig(level=logging.INFO)
@@ -43,9 +43,6 @@ def run_scheduled_sync() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    run_migrations()
-
     scheduler.add_job(
         run_scheduled_sync,
         CronTrigger(hour=settings.refresh_hour, minute=settings.refresh_minute),
@@ -59,8 +56,11 @@ async def lifespan(app: FastAPI):
         settings.refresh_minute,
     )
 
-    if settings.sync_on_startup:
-        async def _startup_sync():
+    async def _init_and_maybe_sync():
+        ready = await asyncio.to_thread(init_database)
+        if not ready:
+            return
+        if settings.sync_on_startup:
             db = SessionLocal()
             try:
                 latest = ContractSyncService(db).get_latest_sync_log()
@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
             finally:
                 db.close()
 
-        asyncio.create_task(_startup_sync())
+    asyncio.create_task(_init_and_maybe_sync())
 
     yield
 
@@ -152,3 +152,17 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready():
+    if is_db_ready():
+        return {"status": "ready", "database": "connected"}
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "starting",
+            "database": "unavailable",
+            "hint": "Add PostgreSQL on Railway and ensure DATABASE_URL is set",
+        },
+    )

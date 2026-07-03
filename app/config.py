@@ -1,13 +1,17 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/govspend"
+    database_url: str = Field(
+        default="postgresql://postgres:postgres@localhost:5432/govspend",
+        validation_alias=AliasChoices("DATABASE_URL", "database_url"),
+    )
     refresh_hour: int = 6
     refresh_minute: int = 0
-    sync_on_startup: bool = True
+    sync_on_startup: bool = False
 
     usaspending_base_url: str = "https://api.usaspending.gov"
     min_award_amount: float = 50_000
