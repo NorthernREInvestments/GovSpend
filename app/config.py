@@ -1,0 +1,30 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/govspend"
+    refresh_hour: int = 6
+    refresh_minute: int = 0
+    sync_on_startup: bool = True
+
+    usaspending_base_url: str = "https://api.usaspending.gov"
+    min_award_amount: float = 50_000
+    expiration_days: int = 60
+    naics_codes: list[str] = [
+        "561720",
+        "561730",
+        "115310",
+        "561990",
+        "238910",
+        "562111",
+        "488490",
+        "562998",
+    ]
+    api_page_limit: int = 100
+    api_request_delay_seconds: float = 0.25
+    max_pages_per_sync: int = 500
+
+
+settings = Settings()

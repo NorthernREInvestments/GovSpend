@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+*.egg-info/
 
 # Environment
 .env
@@ -14,4 +15,6 @@ dist/
 build/
 .next/
 .vscode/
+.idea/
 *.log
+.pytest_cache/

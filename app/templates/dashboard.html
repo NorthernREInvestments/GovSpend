@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GovSpend — Pursuit Pipeline</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">Government Contract Intelligence</p>
+        <h1>GovSpend</h1>
+        <p class="subtitle">Prioritized recompete opportunities · 60-day window · $50K+ · target NAICS</p>
+      </div>
+      <div class="header-actions">
+        <a href="/api/contracts/export" class="btn btn-secondary">Export CSV</a>
+        <button id="refresh-btn" class="btn btn-primary">Refresh Now</button>
+        {% if latest_sync %}
+        <p class="sync-meta">
+          Last sync: {{ latest_sync.finished_at or latest_sync.started_at }} UTC
+          <span class="badge badge-{{ latest_sync.status }}">{{ latest_sync.status }}</span>
+        </p>
+        {% else %}
+        <p class="sync-meta">No sync run yet</p>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="stats-grid">
+      <article class="stat-card stat-primary">
+        <p class="stat-label">Actionable Pipeline Value</p>
+        <p class="stat-value">{{ stats.total_value | currency }}</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">Opportunities</p>
+        <p class="stat-value">{{ stats.total_contracts }}</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">Expiring This Month</p>
+        <p class="stat-value">{{ stats.expiring_this_month }}</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">Actively Pursuing</p>
+        <p class="stat-value">{{ stats.by_status.get('Pursuing', 0) }}</p>
+      </article>
+    </section>
+
+    {% if hot_leads %}
+    <section class="hot-leads">
+      <h2>Act Now — High Priority</h2>
+      <p>Large awards expiring within 3 weeks. Research incumbent, contact CO, watch SAM.gov for solicitation.</p>
+      <div class="hot-grid">
+        {% for lead in hot_leads %}
+        <article class="hot-card">
+          <div class="hot-top">
+            <span class="priority priority-high">High</span>
+            <span class="amount">{{ lead.award_amount | currency }}</span>
+          </div>
+          <h3>{{ lead.contract_name }}</h3>
+          <p class="hot-meta">{{ lead.expiration_date }} · {{ lead.expiration_date | days_until }} days · {{ lead.agency }}</p>
+          <p class="hot-incumbent">Incumbent: {{ lead.incumbent_name }}</p>
+          {% if lead.generated_internal_id %}
+          <a href="{{ lead.generated_internal_id | award_url }}" target="_blank" rel="noopener" class="link">View on USAspending →</a>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="table-section">
+      <div class="table-header">
+        <h2>Pursuit Pipeline</h2>
+        <p>Sorted by pursuit score — urgency + deal size. Won/Lost hidden from active view.</p>
+      </div>
+
+      {% if contracts %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Priority</th>
+              <th>Expires</th>
+              <th>Award Amount</th>
+              <th>Contract</th>
+              <th>Competition Intel</th>
+              <th>Agency / Office</th>
+              <th>Incumbent</th>
+              <th>CO</th>
+              <th>Status</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for contract in contracts %}
+            {% set tier = contract.award_amount | priority_tier(contract.expiration_date) %}
+            <tr class="tier-{{ tier | lower }} {% if contract.expiration_date | days_until <= 14 %}urgent{% endif %}">
+              <td><span class="priority priority-{{ tier | lower }}">{{ tier }}</span></td>
+              <td>
+                <strong>{{ contract.expiration_date }}</strong>
+                <span class="days-tag">{{ contract.expiration_date | days_until }}d</span>
+              </td>
+              <td class="amount">{{ contract.award_amount | currency }}</td>
+              <td>
+                <div class="contract-name">{{ contract.contract_name }}</div>
+                <div class="contract-meta">
+                  {{ contract.award_id }} · NAICS {{ contract.naics_code }}
+                  {% if contract.generated_internal_id %}
+                  · <a href="{{ contract.generated_internal_id | award_url }}" target="_blank" rel="noopener" class="link">USAspending</a>
+                  {% endif %}
+                </div>
+                <div class="contract-meta">{{ contract.place_of_performance }}</div>
+              </td>
+              <td class="intel">
+                {% if contract.set_aside %}<div><strong>Set-aside:</strong> {{ contract.set_aside }}</div>{% endif %}
+                {% if contract.extent_competed %}<div><strong>Competition:</strong> {{ contract.extent_competed }}</div>{% endif %}
+                {% if contract.solicitation_number %}<div><strong>Solicitation:</strong> {{ contract.solicitation_number }}</div>{% endif %}
+                {% if not contract.set_aside and not contract.extent_competed and not contract.solicitation_number %}—{% endif %}
+              </td>
+              <td>
+                <div>{{ contract.agency }}</div>
+                <div class="contract-meta">{{ contract.contracting_office or '—' }}</div>
+              </td>
+              <td>{{ contract.incumbent_name }}</td>
+              <td>{{ contract.co_name or '—' }}</td>
+              <td>
+                <select class="status-select" data-contract-id="{{ contract.id }}">
+                  {% for status in statuses %}
+                  <option value="{{ status }}" {% if contract.status.value == status %}selected{% endif %}>{{ status }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>
+                <textarea class="notes-input" data-contract-id="{{ contract.id }}" rows="2" placeholder="BD notes…">{{ contract.notes }}</textarea>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <h3>No opportunities loaded yet</h3>
+        <p>Click <strong>Refresh Now</strong> to pull expiring contracts from USAspending.gov.</p>
+        <p class="hint">First sync paginates USAspending and may take several minutes.</p>
+      </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
