@@ -181,6 +181,8 @@ class ContractSyncService:
             existing.place_of_performance = fields["place_of_performance"]
             existing.incumbent_name = fields["incumbent_name"]
             existing.expiration_date = fields["expiration_date"]
+            existing.potential_end_date = fields.get("potential_end_date")
+            existing.number_of_offers_received = fields.get("number_of_offers_received")
             if fields["contracting_office"]:
                 existing.contracting_office = fields["contracting_office"]
             if fields["co_name"]:

@@ -44,6 +44,8 @@ NEW_COLUMNS = [
     ("base_all_options_value", "DOUBLE PRECISION"),
     ("estimated_annual_value", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
     ("pop_flag", "VARCHAR(128) NOT NULL DEFAULT ''"),
+    ("potential_end_date", "DATE"),
+    ("number_of_offers_received", "INTEGER"),
 ]
 
 APP_SETTINGS_COLUMNS = [

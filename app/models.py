@@ -66,6 +66,8 @@ class Contract(Base):
     place_of_performance: Mapped[str] = mapped_column(Text, nullable=False, default="")
     incumbent_name: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
+    potential_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    number_of_offers_received: Mapped[int | None] = mapped_column(nullable=True)
     contracting_office: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     co_name: Mapped[str] = mapped_column(String(256), nullable=False, default="")
     naics_code: Mapped[str] = mapped_column(String(16), nullable=False, default="")

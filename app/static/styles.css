@@ -124,10 +124,18 @@ h1 {
 }
 
 .amount-secondary,
-.hot-meta-secondary {
+.hot-meta-secondary,
+.end-date-secondary {
   font-size: 0.78rem;
   color: var(--muted);
   margin-top: 0.15rem;
+}
+
+.end-date-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.1rem;
 }
 
 .amount-suffix {

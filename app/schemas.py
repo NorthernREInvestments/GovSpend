@@ -18,6 +18,8 @@ class ContractBase(BaseModel):
     place_of_performance: str
     incumbent_name: str
     expiration_date: date
+    potential_end_date: date | None = None
+    number_of_offers_received: int | None = None
     contracting_office: str
     co_name: str
     status: ContractStatus = ContractStatus.WATCHING

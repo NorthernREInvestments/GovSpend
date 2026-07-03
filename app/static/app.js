@@ -76,6 +76,22 @@ function updateSyncBanner(data) {
   banner.classList.add("hidden");
 }
 
+function renderExpirationDates(contract) {
+  const days = daysUntil(contract.expiration_date);
+  const hasFinalEnd =
+    contract.potential_end_date && contract.potential_end_date !== contract.expiration_date;
+  const currentLabel = hasFinalEnd ? `<span class="end-date-label">Current end:</span> ` : "";
+
+  let html = `
+    ${currentLabel}<strong>${escapeHtml(contract.expiration_date)}</strong>
+    <span class="days-tag">${days}d</span>
+  `;
+  if (hasFinalEnd) {
+    html += `<div class="end-date-secondary">Final possible: ${escapeHtml(contract.potential_end_date)}</div>`;
+  }
+  return html;
+}
+
 function renderIntel(contract) {
   const parts = [];
   if (contract.set_aside) {
@@ -83,6 +99,11 @@ function renderIntel(contract) {
   }
   if (contract.extent_competed) {
     parts.push(`<div><strong>Competition:</strong> ${escapeHtml(contract.extent_competed)}</div>`);
+  }
+  if (contract.number_of_offers_received != null) {
+    const offers = Number(contract.number_of_offers_received);
+    const label = offers === 1 ? "1 offer" : `${offers} offers`;
+    parts.push(`<div><strong>Offers received:</strong> ${escapeHtml(label)}</div>`);
   }
   if (contract.solicitation_number) {
     parts.push(`<div><strong>Solicitation:</strong> ${escapeHtml(contract.solicitation_number)}</div>`);
@@ -112,10 +133,7 @@ function renderContractRow(contract, statuses) {
   return `
     <tr class="tier-${tierLower}${urgentClass}">
       <td><span class="priority priority-${tierLower}">${tier}</span></td>
-      <td>
-        <strong>${escapeHtml(contract.expiration_date)}</strong>
-        <span class="days-tag">${days}d</span>
-      </td>
+      <td>${renderExpirationDates(contract)}</td>
       <td class="amount">
         <div class="amount-primary">${formatCurrency(annualValue)}<span class="amount-suffix">/yr</span></div>
         <div class="amount-secondary">${formatCurrency(contract.total_obligation || contract.award_amount)} total</div>
@@ -149,6 +167,14 @@ function renderContractRow(contract, statuses) {
 
 function renderHotLead(lead) {
   const days = daysUntil(lead.expiration_date);
+  const hasFinalEnd = lead.potential_end_date && lead.potential_end_date !== lead.expiration_date;
+  const endLine = hasFinalEnd
+    ? `Current end: ${lead.expiration_date} · Final possible: ${lead.potential_end_date}`
+    : lead.expiration_date;
+  const offersLine =
+    lead.number_of_offers_received != null
+      ? `<p class="hot-meta-secondary">Offers received: ${Number(lead.number_of_offers_received)}</p>`
+      : "";
   const link = lead.generated_internal_id
     ? `<a href="${awardUrl(lead.generated_internal_id)}" target="_blank" rel="noopener" class="link">View on USAspending →</a>`
     : "";
@@ -161,8 +187,9 @@ function renderHotLead(lead) {
       </div>
       <h3>${escapeHtml(lead.contract_name)}</h3>
       ${renderPopFlag(lead.pop_flag)}
-      <p class="hot-meta">${escapeHtml(lead.expiration_date)} · ${days} days · ${escapeHtml(lead.agency)}</p>
+      <p class="hot-meta">${escapeHtml(endLine)} · ${days} days · ${escapeHtml(lead.agency)}</p>
       <p class="hot-meta-secondary">Total obligation: ${formatCurrency(lead.total_obligation || lead.award_amount)}</p>
+      ${offersLine}
       <p class="hot-incumbent">Incumbent: ${escapeHtml(lead.incumbent_name)}</p>
       ${link}
     </article>

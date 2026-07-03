@@ -68,6 +68,16 @@ def parse_end_date(value: str | None) -> date | None:
         return None
 
 
+def parse_int_or_none(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(float(str(value)))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
 class USAspendingClient:
     def __init__(
         self,
@@ -317,6 +327,8 @@ class USAspendingClient:
             "total_obligation": None,
             "base_exercised_options_value": None,
             "base_all_options_value": None,
+            "potential_end_date": None,
+            "number_of_offers_received": None,
         }
         if not generated_internal_id:
             return empty
@@ -369,6 +381,8 @@ class USAspendingClient:
             "total_obligation": _float_or_none(data.get("total_obligation")),
             "base_exercised_options_value": _float_or_none(data.get("base_exercised_options")),
             "base_all_options_value": _float_or_none(data.get("base_and_all_options")),
+            "potential_end_date": parse_end_date(pop.get("potential_end_date")),
+            "number_of_offers_received": parse_int_or_none(tx.get("number_of_offers_received")),
         }
 
     async def _fetch_contracting_officer(self, client: httpx.AsyncClient, award_id: Any) -> str:
@@ -451,6 +465,8 @@ def map_award_to_contract_fields(
         "location_state": location_state,
         "incumbent_name": row.get("Recipient Name") or "Unknown",
         "expiration_date": end_date,
+        "potential_end_date": enrichment.get("potential_end_date"),
+        "number_of_offers_received": enrichment.get("number_of_offers_received"),
         "contracting_office": contracting_office,
         "co_name": enrichment.get("co_name") or "",
         "naics_code": parse_naics_code(row.get("NAICS")),
