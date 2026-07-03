@@ -132,3 +132,12 @@ def run_migrations() -> None:
                     "WHERE max_award_amount IS NULL"
                 )
             )
+
+    if _table_exists(inspector, GS_CONTRACTS):
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f'UPDATE "{GS_CONTRACTS}" SET pursuit_score = 0 '
+                    "WHERE estimated_annual_value = 0 AND pursuit_score > 0"
+                )
+            )

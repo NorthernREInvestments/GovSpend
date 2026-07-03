@@ -112,7 +112,7 @@
         <article class="hot-card">
           <div class="hot-top">
             <span class="priority priority-high">High</span>
-            <span class="amount">{{ lead.estimated_annual_value | currency }}<span class="amount-suffix">/yr est.</span></span>
+            <span class="amount">{{ lead.estimated_annual_value | currency if lead.estimated_annual_value > 0 else 'Sync pending' }}<span class="amount-suffix">{% if lead.estimated_annual_value > 0 %}/yr est.{% endif %}</span></span>
           </div>
           <h3>{{ lead.contract_name }}</h3>
           {% if lead.pop_flag %}
@@ -126,7 +126,7 @@
             {% endif %}
             · {{ lead.expiration_date | days_until }} days · {{ lead.agency }}
           </p>
-          <p class="hot-meta-secondary">Total obligation: {{ lead.total_obligation | currency }}</p>
+          <p class="hot-meta-secondary">Total obligation: {{ lead | contract_total | currency }}</p>
           {% if lead.number_of_offers_received is not none %}
           <p class="hot-meta-secondary">Offers received: {{ lead.number_of_offers_received }}</p>
           {% endif %}
@@ -164,7 +164,7 @@
           </thead>
           <tbody id="contracts-tbody">
             {% for contract in contracts %}
-            {% set tier = contract.estimated_annual_value | priority_tier(contract.expiration_date) %}
+            {% set tier = contract | priority_tier %}
             <tr class="tier-{{ tier | lower }} {% if contract.expiration_date | days_until <= 14 %}urgent{% endif %}">
               <td><span class="priority priority-{{ tier | lower }}">{{ tier }}</span></td>
               <td>
@@ -178,8 +178,12 @@
                 {% endif %}
               </td>
               <td class="amount">
+                {% if contract.estimated_annual_value > 0 %}
                 <div class="amount-primary">{{ contract.estimated_annual_value | currency }}<span class="amount-suffix">/yr</span></div>
-                <div class="amount-secondary">{{ contract.total_obligation | currency }} total</div>
+                {% else %}
+                <div class="amount-primary amount-pending">Sync pending</div>
+                {% endif %}
+                <div class="amount-secondary">{{ contract | contract_total | currency }} total</div>
               </td>
               <td>
                 <div class="contract-name">{{ contract.contract_name }}</div>

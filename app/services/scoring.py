@@ -107,3 +107,57 @@ def annual_value_in_range(
     if max_annual_value is not None and estimated_annual_value > max_annual_value:
         return False
     return True
+
+
+def contract_total_obligation(
+    *,
+    total_obligation: float = 0,
+    award_amount: float = 0,
+) -> float:
+    return total_obligation if total_obligation > 0 else award_amount
+
+
+def effective_annual_value(
+    *,
+    estimated_annual_value: float = 0,
+    total_obligation: float = 0,
+    award_amount: float = 0,
+    start_date: date | None,
+    expiration_date: date,
+) -> float:
+    if estimated_annual_value > 0:
+        return estimated_annual_value
+    obligation = contract_total_obligation(
+        total_obligation=total_obligation,
+        award_amount=award_amount,
+    )
+    if start_date is None or obligation <= 0:
+        return 0.0
+    return compute_estimated_annual_value(obligation, start_date, expiration_date) or 0.0
+
+
+def pursuit_score_for_contract(
+    *,
+    estimated_annual_value: float,
+    total_obligation: float,
+    award_amount: float,
+    start_date: date | None,
+    expiration_date: date,
+    max_annual_value: float = 350_000,
+    today: date | None = None,
+) -> float:
+    annual = effective_annual_value(
+        estimated_annual_value=estimated_annual_value,
+        total_obligation=total_obligation,
+        award_amount=award_amount,
+        start_date=start_date,
+        expiration_date=expiration_date,
+    )
+    if annual <= 0:
+        return 0.0
+    return compute_pursuit_score(
+        annual,
+        expiration_date,
+        max_annual_value=max_annual_value,
+        today=today,
+    )

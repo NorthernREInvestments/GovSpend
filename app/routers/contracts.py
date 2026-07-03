@@ -25,11 +25,11 @@ from app.schemas import (
     WatchlistMatchUpdateResponse,
     WatchlistStatusUpdate,
 )
-from app.services.dashboard_data import build_dashboard_data, pursuit_contracts_query
+from app.services.dashboard_data import build_dashboard_data, pursuit_contracts_query, sort_pursuit_contracts
 from app.services.govtracker import apply_govtracker_match, find_watchlist_matches
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.cleanup import CleanupService
-from app.services.scoring import priority_tier, usaspending_award_url
+from app.services.scoring import effective_annual_value, priority_tier, usaspending_award_url
 from app.services.sync import ContractSyncService
 from app.services.sync_lock import SyncInProgressError, acquire_sync_lock
 
@@ -186,10 +186,10 @@ def list_contracts(
     status: ContractStatus | None = None,
     db: Session = Depends(get_db),
 ):
-    query = _pursuit_query(db)
+    contracts = pursuit_contracts_query(db).all()
     if status:
-        query = query.filter(Contract.status == status)
-    return query.all()
+        contracts = [contract for contract in contracts if contract.status == status]
+    return sort_pursuit_contracts(contracts, db)
 
 
 @router.patch("/contracts/{contract_id}/status", response_model=ContractRead)
@@ -226,7 +226,7 @@ def update_contract_notes(
 
 @router.get("/contracts/export")
 def export_contracts(db: Session = Depends(get_db)):
-    contracts = _pursuit_query(db).all()
+    contracts = sort_pursuit_contracts(pursuit_contracts_query(db).all(), db)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
@@ -307,7 +307,13 @@ def get_stats(db: Session = Depends(get_db)):
     expiring_this_month = 0
 
     for contract in contracts:
-        total_value += contract.estimated_annual_value
+        total_value += effective_annual_value(
+            estimated_annual_value=contract.estimated_annual_value,
+            total_obligation=contract.total_obligation,
+            award_amount=contract.award_amount,
+            start_date=contract.start_date,
+            expiration_date=contract.expiration_date,
+        )
         by_status[contract.status.value] = by_status.get(contract.status.value, 0) + 1
         if today <= contract.expiration_date <= month_end:
             expiring_this_month += 1

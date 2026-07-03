@@ -76,6 +76,18 @@ function updateSyncBanner(data) {
   banner.classList.add("hidden");
 }
 
+function contractTotalValue(contract) {
+  return contract.total_obligation || contract.award_amount || 0;
+}
+
+function renderAnnualAmount(contract) {
+  const annual = contract.estimated_annual_value;
+  if (annual > 0) {
+    return `<div class="amount-primary">${formatCurrency(annual)}<span class="amount-suffix">/yr</span></div>`;
+  }
+  return '<div class="amount-primary amount-pending">Sync pending</div>';
+}
+
 function renderExpirationDates(contract) {
   const days = daysUntil(contract.expiration_date);
   const hasFinalEnd =
@@ -121,7 +133,7 @@ function renderStatusOptions(contract, statuses) {
 }
 
 function renderContractRow(contract, statuses) {
-  const annualValue = contract.estimated_annual_value || 0;
+  const annualValue = contract.estimated_annual_value > 0 ? contract.estimated_annual_value : 0;
   const tier = priorityTier(annualValue, contract.expiration_date);
   const tierLower = tier.toLowerCase();
   const days = daysUntil(contract.expiration_date);
@@ -135,8 +147,8 @@ function renderContractRow(contract, statuses) {
       <td><span class="priority priority-${tierLower}">${tier}</span></td>
       <td>${renderExpirationDates(contract)}</td>
       <td class="amount">
-        <div class="amount-primary">${formatCurrency(annualValue)}<span class="amount-suffix">/yr</span></div>
-        <div class="amount-secondary">${formatCurrency(contract.total_obligation || contract.award_amount)} total</div>
+        ${renderAnnualAmount(contract)}
+        <div class="amount-secondary">${formatCurrency(contractTotalValue(contract))} total</div>
       </td>
       <td>
         <div class="contract-name">${escapeHtml(contract.contract_name)}</div>
@@ -183,12 +195,16 @@ function renderHotLead(lead) {
     <article class="hot-card">
       <div class="hot-top">
         <span class="priority priority-high">High</span>
-        <span class="amount">${formatCurrency(lead.estimated_annual_value || 0)}<span class="amount-suffix">/yr est.</span></span>
+        <span class="amount">${
+          lead.estimated_annual_value > 0
+            ? `${formatCurrency(lead.estimated_annual_value)}<span class="amount-suffix">/yr est.</span>`
+            : '<span class="amount-pending">Sync pending</span>'
+        }</span>
       </div>
       <h3>${escapeHtml(lead.contract_name)}</h3>
       ${renderPopFlag(lead.pop_flag)}
       <p class="hot-meta">${escapeHtml(endLine)} · ${days} days · ${escapeHtml(lead.agency)}</p>
-      <p class="hot-meta-secondary">Total obligation: ${formatCurrency(lead.total_obligation || lead.award_amount)}</p>
+      <p class="hot-meta-secondary">Total obligation: ${formatCurrency(contractTotalValue(lead))}</p>
       ${offersLine}
       <p class="hot-incumbent">Incumbent: ${escapeHtml(lead.incumbent_name)}</p>
       ${link}

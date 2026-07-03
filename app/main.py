@@ -16,7 +16,12 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.startup import init_database, is_db_ready
 from app.services.dashboard_data import build_dashboard_data
-from app.services.scoring import priority_tier, usaspending_award_url
+from app.services.scoring import (
+    contract_total_obligation,
+    effective_annual_value,
+    priority_tier,
+    usaspending_award_url,
+)
 from app.database import SessionLocal, get_db
 from app.models import Contract, ContractStatus, SyncLog
 from app.routers import contracts
@@ -131,9 +136,32 @@ def _days_until(expiration: date) -> int:
     return (expiration - date.today()).days
 
 
+def _contract_annual(contract: Contract) -> float:
+    return effective_annual_value(
+        estimated_annual_value=contract.estimated_annual_value,
+        total_obligation=contract.total_obligation,
+        award_amount=contract.award_amount,
+        start_date=contract.start_date,
+        expiration_date=contract.expiration_date,
+    )
+
+
+def _contract_total(contract: Contract) -> float:
+    return contract_total_obligation(
+        total_obligation=contract.total_obligation,
+        award_amount=contract.award_amount,
+    )
+
+
+def _contract_priority_tier(contract: Contract) -> str:
+    return priority_tier(_contract_annual(contract), contract.expiration_date)
+
+
 templates.env.filters["currency"] = _format_currency
 templates.env.filters["days_until"] = _days_until
-templates.env.filters["priority_tier"] = priority_tier
+templates.env.filters["priority_tier"] = _contract_priority_tier
+templates.env.filters["contract_annual"] = _contract_annual
+templates.env.filters["contract_total"] = _contract_total
 templates.env.filters["award_url"] = usaspending_award_url
 
 

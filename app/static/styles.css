@@ -123,6 +123,12 @@ h1 {
   color: #f8fafc;
 }
 
+.amount-pending {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
 .amount-secondary,
 .hot-meta-secondary,
 .end-date-secondary {

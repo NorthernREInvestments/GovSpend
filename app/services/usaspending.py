@@ -418,6 +418,22 @@ class USAspendingClient:
             return ""
 
 
+def contract_to_award_row(contract: Any) -> dict[str, Any]:
+    return {
+        "Award ID": contract.award_id,
+        "Description": contract.contract_name,
+        "Recipient Name": contract.incumbent_name,
+        "Award Amount": contract.award_amount,
+        "Start Date": contract.start_date.isoformat() if contract.start_date else "",
+        "Awarding Agency": contract.agency,
+        "Awarding Sub Agency": contract.contracting_office,
+        "Primary Place of Performance": contract.place_of_performance,
+        "End Date": contract.expiration_date.isoformat(),
+        "NAICS": contract.naics_code,
+        "generated_internal_id": contract.generated_internal_id,
+    }
+
+
 def map_award_to_contract_fields(
     row: dict[str, Any],
     enrichment: dict[str, Any],

@@ -7,7 +7,7 @@ from app.models import Contract, ContractStatus, SyncLog
 from app.services.app_settings import get_sync_config
 from app.services.scoring import annual_value_in_range
 from app.services.sync_lock import acquire_sync_lock, get_running_sync_log, release_sync_lock
-from app.services.usaspending import USAspendingClient
+from app.services.usaspending import USAspendingClient, contract_to_award_row
 from app.services.watchlist import (
     remove_out_of_window_watchlist,
     remove_stale_watchlist,
@@ -78,8 +78,20 @@ class ContractSyncService:
             log.message = "Contacting USAspending API…"
             self.db.commit()
 
+            repaired, repair_removed = await self._repair_stale_contracts(
+                log,
+                min_annual,
+                max_annual,
+            )
+            upserted = repaired
+            if repaired or repair_removed:
+                logger.info(
+                    "Repaired %s stale contracts, removed %s outside annual range",
+                    repaired,
+                    repair_removed,
+                )
+
             contracts_found = 0
-            upserted = 0
             watchlist_upserted = 0
             pages_scanned = 0
             skipped_annual = 0
@@ -158,6 +170,61 @@ class ContractSyncService:
             raise
 
         return log
+
+    async def _repair_stale_contracts(
+        self,
+        log: SyncLog,
+        min_annual: float,
+        max_annual: float | None,
+    ) -> tuple[int, int]:
+        stale = (
+            self.db.query(Contract)
+            .filter(
+                Contract.estimated_annual_value == 0,
+                Contract.generated_internal_id.isnot(None),
+            )
+            .all()
+        )
+        if not stale:
+            return 0, 0
+
+        repaired = 0
+        removed = 0
+        batch_size = 50
+        total = len(stale)
+        log.message = f"Repairing {total} contracts missing annual value…"
+        self.db.commit()
+
+        for offset in range(0, total, batch_size):
+            batch = stale[offset : offset + batch_size]
+            rows = [contract_to_award_row(contract) for contract in batch]
+            enriched_fields = await self.client.enrich_awards_batch(rows)
+
+            for fields in enriched_fields:
+                award_id = fields["award_id"]
+                existing = (
+                    self.db.query(Contract)
+                    .filter(Contract.award_id == award_id)
+                    .one_or_none()
+                )
+                if not annual_value_in_range(
+                    fields.get("estimated_annual_value"),
+                    min_annual,
+                    max_annual,
+                ):
+                    if existing:
+                        self.db.delete(existing)
+                        removed += 1
+                    continue
+                repaired += self._upsert_contract(fields, commit=False)
+                upsert_watchlist(self.db, fields, commit=False)
+
+            processed = min(offset + batch_size, total)
+            log.message = f"Repairing stale contracts… {processed}/{total} checked, {repaired} saved"
+            log.contracts_upserted = repaired
+            self.db.commit()
+
+        return repaired, removed
 
     def _upsert_contract(self, fields: dict, *, commit: bool = True) -> int:
         existing = (
