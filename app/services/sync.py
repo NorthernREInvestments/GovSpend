@@ -88,10 +88,16 @@ class ContractSyncService:
                 log.contracts_found = contracts_found
                 log.contracts_upserted = upserted
                 log.pages_scanned = pages_scanned
-                log.message = (
-                    f"Loaded {upserted} contracts so far "
-                    f"({pages_scanned} API pages scanned, NAICS {naics_code})…"
-                )
+                if upserted == 0:
+                    log.message = (
+                        f"Scanning page {pages_scanned} (NAICS {naics_code}) — "
+                        f"skipping expired contracts until {window_start}–{window_end} window…"
+                    )
+                else:
+                    log.message = (
+                        f"Loaded {upserted} contracts so far "
+                        f"({pages_scanned} API pages scanned, NAICS {naics_code})…"
+                    )
                 self.db.commit()
 
                 logger.info(

@@ -56,7 +56,9 @@ function updateSyncBanner(data) {
   if (data.status === "running") {
     const loaded = data.contracts_upserted || 0;
     const pages = data.pages_scanned || 0;
-    progress.textContent = `${loaded} contracts loaded so far (${pages} API pages scanned). Sorted pipeline updates automatically.`;
+    progress.textContent =
+      data.message ||
+      `${loaded} contracts loaded so far (${pages} API pages scanned). Sorted pipeline updates automatically.`;
     banner.classList.remove("hidden");
     return;
   }
