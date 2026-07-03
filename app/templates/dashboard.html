@@ -33,6 +33,12 @@
   </header>
 
   <main class="container">
+    {% if sync_running %}
+    <div class="sync-banner">
+      <strong>Sync in progress</strong> — pulling contracts from USAspending. Data will appear in batches; refresh the page in a minute.
+    </div>
+    {% endif %}
+
     <section class="settings-panel">
       <div class="settings-header">
         <h2>Search Settings</h2>

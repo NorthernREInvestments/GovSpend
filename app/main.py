@@ -22,6 +22,7 @@ from app.routers import contracts
 from app.services.app_settings import get_or_create_app_settings
 from app.services.cleanup import CleanupService
 from app.services.sync import ContractSyncService
+from app.services.sync_lock import SyncInProgressError, is_sync_running
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,10 +84,15 @@ async def lifespan(app: FastAPI):
         if settings.sync_on_startup:
             db = SessionLocal()
             try:
-                latest = ContractSyncService(db).get_latest_sync_log()
-                if latest is None or latest.status != "running":
-                    logger.info("Running startup contract sync in background")
-                    await ContractSyncService(db).run_sync()
+                from app.services.sync_lock import is_sync_running
+
+                if is_sync_running(db):
+                    logger.info("Skipping startup sync — one is already running")
+                    return
+                logger.info("Running startup contract sync in background")
+                await ContractSyncService(db).run_sync()
+            except SyncInProgressError:
+                logger.info("Startup sync skipped — another sync is active")
             except Exception:
                 logger.exception("Startup sync failed")
             finally:
@@ -152,6 +158,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     latest_sync = (
         db.query(SyncLog).order_by(SyncLog.started_at.desc()).first()
     )
+    sync_running = is_sync_running(db)
     app_settings = get_or_create_app_settings(db)
 
     return templates.TemplateResponse(
@@ -169,6 +176,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             },
             "statuses": [status.value for status in ContractStatus],
             "latest_sync": latest_sync,
+            "sync_running": sync_running,
             "now": datetime.utcnow(),
         },
     )

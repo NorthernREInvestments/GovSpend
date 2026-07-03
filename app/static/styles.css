@@ -70,6 +70,15 @@ h1 {
   padding: 1.5rem;
 }
 
+.sync-banner {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.08));
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+  color: #93c5fd;
+}
+
 .settings-panel {
   background: var(--surface);
   border: 1px solid var(--border);

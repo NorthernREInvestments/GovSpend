@@ -24,6 +24,7 @@ from app.services.app_settings import get_or_create_app_settings, update_app_set
 from app.services.cleanup import CleanupService
 from app.services.scoring import priority_tier, usaspending_award_url
 from app.services.sync import ContractSyncService
+from app.services.sync_lock import SyncInProgressError
 
 router = APIRouter(prefix="/api", tags=["contracts"])
 
@@ -257,7 +258,18 @@ def get_stats(db: Session = Depends(get_db)):
 
 @router.get("/sync/status", response_model=SyncStatusRead)
 def sync_status(db: Session = Depends(get_db)):
-    log = ContractSyncService(db).get_latest_sync_log()
+    service = ContractSyncService(db)
+    running = service.get_running_sync_log()
+    if running:
+        return SyncStatusRead(
+            last_sync=running.started_at,
+            contracts_found=running.contracts_found,
+            contracts_upserted=running.contracts_upserted,
+            pages_scanned=running.pages_scanned,
+            status="running",
+            message=running.message or "Sync in progress…",
+        )
+    log = service.get_latest_sync_log()
     if not log:
         return SyncStatusRead(status="never_run")
     return SyncStatusRead(
@@ -272,7 +284,19 @@ def sync_status(db: Session = Depends(get_db)):
 
 @router.post("/sync/run", response_model=SyncStatusRead)
 async def run_sync(db: Session = Depends(get_db)):
-    log = await ContractSyncService(db).run_sync()
+    service = ContractSyncService(db)
+    try:
+        log = await service.run_sync()
+    except SyncInProgressError as exc:
+        running = exc.log
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Sync already in progress",
+                "started_at": running.started_at.isoformat() if running and running.started_at else None,
+                "contracts_found": running.contracts_found if running else 0,
+            },
+        ) from exc
     return SyncStatusRead(
         last_sync=log.finished_at or log.started_at,
         contracts_found=log.contracts_found,

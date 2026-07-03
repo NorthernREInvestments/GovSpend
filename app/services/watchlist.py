@@ -31,7 +31,7 @@ def build_watchlist_fields(contract_fields: dict, today: date | None = None) -> 
     }
 
 
-def upsert_watchlist(db: Session, contract_fields: dict) -> int:
+def upsert_watchlist(db: Session, contract_fields: dict, *, commit: bool = True) -> int:
     fields = build_watchlist_fields(contract_fields)
     existing = (
         db.query(Watchlist)
@@ -46,12 +46,14 @@ def upsert_watchlist(db: Session, contract_fields: dict) -> int:
             setattr(existing, key, value)
         existing.status = preserved_status
         existing.updated_at = now
-        db.commit()
+        if commit:
+            db.commit()
         return 1
 
     entry = Watchlist(**fields, status=WatchlistStatus.WATCHING, created_at=now, updated_at=now)
     db.add(entry)
-    db.commit()
+    if commit:
+        db.commit()
     return 1
 
 

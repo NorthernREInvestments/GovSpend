@@ -26,6 +26,11 @@ async function runSync() {
   btn.textContent = "Syncing…";
   try {
     const response = await fetch("/api/sync/run", { method: "POST" });
+    if (response.status === 409) {
+      showToast("Sync already running — page will refresh when done");
+      pollUntilSyncDone();
+      return;
+    }
     if (!response.ok) throw new Error("Sync failed");
     const data = await response.json();
     showToast(`Sync complete: ${data.contracts_found} found, ${data.contracts_upserted} updated`);
@@ -35,6 +40,24 @@ async function runSync() {
     btn.disabled = false;
     btn.textContent = "Refresh Now";
   }
+}
+
+async function pollUntilSyncDone() {
+  const btn = document.getElementById("refresh-btn");
+  const interval = setInterval(async () => {
+    try {
+      const response = await fetch("/api/sync/status");
+      const data = await response.json();
+      if (data.status !== "running") {
+        clearInterval(interval);
+        window.location.reload();
+      }
+    } catch {
+      clearInterval(interval);
+      btn.disabled = false;
+      btn.textContent = "Refresh Now";
+    }
+  }, 8000);
 }
 
 document.getElementById("settings-form")?.addEventListener("submit", async (event) => {
@@ -65,6 +88,10 @@ document.getElementById("save-and-refresh-btn")?.addEventListener("click", async
 });
 
 document.getElementById("refresh-btn")?.addEventListener("click", runSync);
+
+if (document.querySelector(".sync-banner")) {
+  pollUntilSyncDone();
+}
 
 document.querySelectorAll(".status-select").forEach((select) => {
   select.addEventListener("change", async (event) => {
