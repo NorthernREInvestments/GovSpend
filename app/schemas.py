@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models import ContractStatus, WatchlistPriority, WatchlistStatus
 
@@ -102,3 +102,31 @@ class WatchlistRead(BaseModel):
 
 class WatchlistStatusUpdate(BaseModel):
     status: WatchlistStatus
+
+
+class WatchlistMatchNotification(BaseModel):
+    """Contract match payload from GovTracker SAM.gov monitoring."""
+
+    agency: str = Field(min_length=2, max_length=512)
+    location_city: str = Field(min_length=1, max_length=256)
+    location_state: str = Field(min_length=2, max_length=64)
+    naics_code: str = Field(min_length=2, max_length=16)
+    sam_notice_id: str | None = Field(default=None, max_length=128)
+    contract_title: str | None = Field(default=None, max_length=2000)
+    source: str = Field(default="govtracker", max_length=64)
+
+    @field_validator("agency", "location_city", "location_state", "naics_code")
+    @classmethod
+    def strip_required_fields(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Field cannot be empty")
+        return cleaned
+
+
+class WatchlistMatchUpdateResponse(BaseModel):
+    updated: bool
+    watchlist_ids: list[int]
+    status: WatchlistStatus
+    matched_count: int
+    message: str

@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Contract, ContractStatus, Watchlist, WatchlistPriority
+from app.models import Contract, ContractStatus, Watchlist, WatchlistPriority, WatchlistStatus
 from app.schemas import (
     AppSettingsRead,
     AppSettingsUpdate,
@@ -18,8 +18,11 @@ from app.schemas import (
     SyncStatusRead,
     CleanupLogRead,
     WatchlistRead,
+    WatchlistMatchNotification,
+    WatchlistMatchUpdateResponse,
     WatchlistStatusUpdate,
 )
+from app.services.govtracker import apply_govtracker_match, find_watchlist_matches
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.cleanup import CleanupService
 from app.services.scoring import priority_tier, usaspending_award_url
@@ -95,6 +98,44 @@ def list_watchlist(
     if priority:
         rows = [r for r in rows if r.priority == priority]
     return rows
+
+
+@router.post("/watchlist/update-status", response_model=WatchlistMatchUpdateResponse)
+def govtracker_update_watchlist_status(
+    payload: WatchlistMatchNotification,
+    db: Session = Depends(get_db),
+):
+    matches = find_watchlist_matches(db, payload)
+    if not matches:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "No watchlist record matches agency, location, and NAICS",
+                "agency": payload.agency,
+                "location_city": payload.location_city,
+                "location_state": payload.location_state,
+                "naics_code": payload.naics_code,
+            },
+        )
+
+    active_matches = [m for m in matches if m.status not in (WatchlistStatus.WON, WatchlistStatus.LOST)]
+    if not active_matches:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Matching watchlist records are closed (Won/Lost)",
+                "watchlist_ids": [m.id for m in matches],
+            },
+        )
+
+    updated = apply_govtracker_match(db, payload)
+    return WatchlistMatchUpdateResponse(
+        updated=True,
+        watchlist_ids=[entry.id for entry in updated],
+        status=WatchlistStatus.FOUND_ON_SAM,
+        matched_count=len(updated),
+        message=f"Updated {len(updated)} watchlist record(s) to Found on SAM",
+    )
 
 
 @router.patch("/watchlist/{watchlist_id}/status", response_model=WatchlistRead)
