@@ -27,7 +27,7 @@
         <button id="refresh-btn" class="btn btn-primary">Refresh Now</button>
         {% if latest_sync %}
         <p class="sync-meta">
-          Last sync: {{ latest_sync.finished_at or latest_sync.started_at }} UTC
+          Last sync: {{ (latest_sync.finished_at or latest_sync.started_at) | mountain_time }}
           <span class="badge badge-{{ latest_sync.status }}">{{ latest_sync.status }}</span>
         </p>
         {% else %}

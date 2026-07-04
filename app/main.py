@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -131,6 +132,19 @@ static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
+MOUNTAIN_TZ = ZoneInfo("America/Denver")
+
+
+def _mountain_time_display(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=ZoneInfo("UTC"))
+    local = value.astimezone(MOUNTAIN_TZ)
+    tz_label = local.tzname() or "MT"
+    return f"{local.strftime('%b %d, %Y %I:%M %p')} {tz_label}"
+
+
 def _format_currency(value: float) -> str:
     return f"${value:,.0f}"
 
@@ -226,6 +240,7 @@ def _recurring_fit_class(contract: Contract) -> str:
 
 
 templates.env.filters["currency"] = _format_currency
+templates.env.filters["mountain_time"] = _mountain_time_display
 templates.env.filters["days_until"] = _days_until
 templates.env.filters["priority_tier"] = _contract_priority_tier
 templates.env.filters["contract_annual"] = _contract_annual
