@@ -568,3 +568,85 @@ if (contractsTable) {
     );
   });
 }
+
+function browseFitClass(note) {
+  if (note === "Matches pursuit filters") return "browse-fit-match";
+  if (note === "In your pipeline") return "browse-fit-pipeline";
+  if (note === "No option-year structure") return "browse-fit-no-options";
+  return "browse-fit-outside";
+}
+
+function renderBrowseRow(item) {
+  const dimClass =
+    item.in_pursuit_range && item.has_option_years && !item.in_pipeline
+      ? ""
+      : " browse-row-dim";
+  const awardLink = item.generated_internal_id
+    ? ` · <a href="${awardUrl(item.generated_internal_id)}" target="_blank" rel="noopener" class="link">USAspending</a>`
+    : "";
+  const runway =
+    item.potential_end_date && item.potential_end_date !== item.expiration_date
+      ? `<div class="end-date-secondary">Final possible: ${escapeHtml(item.potential_end_date)}</div>`
+      : "";
+  return `
+    <tr class="${dimClass.trim()}">
+      <td>
+        <strong>${escapeHtml(item.expiration_date)}</strong>
+        <span class="days-tag">${daysUntil(item.expiration_date)}d</span>
+        ${runway}
+      </td>
+      <td class="amount">
+        <div class="amount-primary">${formatCurrency(item.estimated_annual_value)}<span class="amount-suffix">/yr</span></div>
+        <div class="amount-secondary">${formatCurrency(item.total_obligation)} total</div>
+      </td>
+      <td>
+        <div class="contract-name">${escapeHtml(item.contract_name)}</div>
+        ${renderPopFlag(item.pop_flag)}
+        <div class="contract-meta">${escapeHtml(item.award_id)} · NAICS ${escapeHtml(item.naics_code)}${awardLink}</div>
+        <div class="contract-meta">${escapeHtml(item.place_of_performance)}</div>
+      </td>
+      <td><span class="browse-fit ${browseFitClass(item.fit_note)}">${escapeHtml(item.fit_note)}</span></td>
+      <td>${escapeHtml(item.agency)}<div class="contract-meta">${escapeHtml(item.incumbent_name)}</div></td>
+    </tr>
+  `;
+}
+
+async function scanMarket() {
+  const btn = document.getElementById("browse-scan-btn");
+  const status = document.getElementById("browse-status");
+  const wrap = document.getElementById("browse-results-wrap");
+  const tbody = document.getElementById("browse-tbody");
+  if (!btn || !status || !wrap || !tbody) return;
+
+  btn.disabled = true;
+  btn.textContent = "Scanning…";
+  status.classList.remove("hidden");
+  status.textContent = "Querying USAspending live — this takes 30–90 seconds and nothing is saved.";
+  wrap.classList.add("hidden");
+
+  try {
+    const response = await fetch("/api/browse");
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.detail || "Market scan failed");
+    }
+    const data = await response.json();
+    tbody.innerHTML = data.results.map(renderBrowseRow).join("");
+    wrap.classList.toggle("hidden", data.results.length === 0);
+    status.textContent =
+      data.results.length === 0
+        ? `No contracts found between ${formatCurrency(data.browse_min_annual)} and ${formatCurrency(data.browse_max_annual)}/yr expiring ${data.window_start}–${data.window_end}.`
+        : `Showing ${data.results.length} live results from ${data.candidates_scanned} candidates (${data.pages_scanned} API pages). Pursuit range: ${formatCurrency(data.pursuit_min_annual)}–${formatCurrency(data.pursuit_max_annual)}/yr.`;
+    if (data.results.length > 0) {
+      showToast(`Market scan complete — ${data.results.length} contracts`);
+    }
+  } catch (error) {
+    status.textContent = error.message || "Market scan failed";
+    showToast(status.textContent);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Scan Market";
+  }
+}
+
+document.getElementById("browse-scan-btn")?.addEventListener("click", scanMarket);

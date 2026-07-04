@@ -85,6 +85,34 @@
       </form>
     </section>
 
+    <section class="browse-panel">
+      <div class="browse-header">
+        <div>
+          <h2>Market Browse</h2>
+          <p id="browse-subtitle">
+            Live window shopping — scans USAspending across your NAICS codes without saving to your pipeline.
+            Shows $25k–$10M/yr in your expiration window; highlights what matches pursuit settings.
+          </p>
+        </div>
+        <button type="button" class="btn btn-secondary" id="browse-scan-btn">Scan Market</button>
+      </div>
+      <p id="browse-status" class="browse-status hidden"></p>
+      <div class="table-wrap browse-table-wrap hidden" id="browse-results-wrap">
+        <table class="contracts-table browse-table">
+          <thead>
+            <tr>
+              <th>Expires</th>
+              <th>Est. /yr</th>
+              <th>Contract</th>
+              <th>Fit</th>
+              <th>Agency</th>
+            </tr>
+          </thead>
+          <tbody id="browse-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="view-filter-panel">
       <label class="view-filter-toggle">
         <input type="checkbox" id="recompete-only" name="recompete_only"

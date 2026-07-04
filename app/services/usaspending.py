@@ -114,6 +114,8 @@ class USAspendingClient:
         window_start: date,
         window_end: date,
         seen_award_ids: set[str] | None = None,
+        *,
+        max_pages_per_naics: int | None = None,
     ) -> AsyncIterator[tuple[list[dict[str, Any]], int, str]]:
         """Yield in-window awards after each API page across parallel NAICS scans."""
         seen = seen_award_ids if seen_award_ids is not None else set()
@@ -140,6 +142,7 @@ class USAspendingClient:
                         window_end=window_end,
                         seen_award_ids=seen,
                         dedup_lock=dedup_lock,
+                        max_pages=max_pages_per_naics,
                     ):
                         await queue.put((naics_code, page_batch))
                 finally:
@@ -175,13 +178,16 @@ class USAspendingClient:
         window_end: date,
         seen_award_ids: set[str],
         dedup_lock: asyncio.Lock | None = None,
+        *,
+        max_pages: int | None = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         page = 1
         has_next = True
         naics_found = 0
         mod_start = date.today() - timedelta(days=730)
+        page_limit = max_pages or settings.max_pages_per_sync
 
-        while has_next and page <= settings.max_pages_per_sync:
+        while has_next and page <= page_limit:
             if page == 1:
                 logger.info("Starting USAspending search for NAICS %s", naics_code)
 

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     api_request_delay_seconds: float = 0.25
     max_pages_per_sync: int = 500
     naics_parallel_limit: int = 8
+    browse_min_annual: float = 25_000
+    browse_max_annual: float = 10_000_000
+    browse_max_results: int = 50
+    browse_max_pages_per_naics: int = 1
 
 
 settings = Settings()

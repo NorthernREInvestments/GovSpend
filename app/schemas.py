@@ -81,6 +81,39 @@ class DashboardLiveRead(BaseModel):
     stats: DashboardStats
 
 
+class BrowseContractRead(BaseModel):
+    award_id: str
+    generated_internal_id: str | None = None
+    contract_name: str
+    naics_code: str
+    agency: str
+    incumbent_name: str
+    place_of_performance: str
+    expiration_date: date
+    potential_end_date: date | None = None
+    estimated_annual_value: float
+    total_obligation: float
+    pop_flag: str = ""
+    period_years: float | None = None
+    remaining_option_years: float | None = None
+    in_pursuit_range: bool
+    has_option_years: bool
+    in_pipeline: bool
+    fit_note: str
+
+
+class MarketBrowseRead(BaseModel):
+    window_start: date
+    window_end: date
+    pursuit_min_annual: float
+    pursuit_max_annual: float
+    browse_min_annual: float
+    browse_max_annual: float
+    pages_scanned: int
+    candidates_scanned: int
+    results: list[BrowseContractRead]
+
+
 class AppSettingsRead(BaseModel):
     min_award_amount: float
     max_award_amount: float | None = None

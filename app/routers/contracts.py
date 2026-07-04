@@ -18,6 +18,7 @@ from app.schemas import (
     ContractStatusUpdate,
     DashboardLiveRead,
     DashboardStats,
+    MarketBrowseRead,
     SyncStatusRead,
     CleanupLogRead,
     WatchlistRead,
@@ -28,6 +29,7 @@ from app.schemas import (
 from app.services.dashboard_data import build_dashboard_data, pursuit_contracts_query, sort_pursuit_contracts
 from app.services.govtracker import apply_govtracker_match, find_watchlist_matches
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
+from app.services.browse import fetch_market_browse
 from app.services.cleanup import CleanupService
 from app.services.scoring import (
     apply_option_years_filter,
@@ -197,6 +199,17 @@ def update_watchlist_status(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.get("/browse", response_model=MarketBrowseRead)
+async def browse_market(db: Session = Depends(get_db)):
+    """Live USAspending snapshot — not saved to the database."""
+    try:
+        payload = await fetch_market_browse(db)
+    except Exception as exc:
+        logger.exception("Market browse failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return MarketBrowseRead(**payload)
 
 
 @router.get("/settings", response_model=AppSettingsRead)
