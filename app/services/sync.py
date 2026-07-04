@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Contract, ContractStatus, SyncLog
 from app.services.app_settings import get_sync_config
 from app.services.scoring import annual_value_in_range, fields_have_option_year_structure
-from app.services.sync_lock import acquire_sync_lock, get_running_sync_log, release_sync_lock
+from app.services.sync_lock import acquire_sync_lock, get_running_sync_log, release_sync_lock, touch_sync_progress
 from app.services.usaspending import USAspendingClient, contract_to_award_row
 from app.services.watchlist import (
     remove_out_of_window_watchlist,
@@ -51,6 +51,7 @@ class ContractSyncService:
             log = SyncLog(
                 status="running",
                 started_at=datetime.utcnow(),
+                progress_at=datetime.utcnow(),
                 message="Searching USAspending…",
             )
             self.db.add(log)
@@ -76,6 +77,7 @@ class ContractSyncService:
                 log.id,
             )
             log.message = "Contacting USAspending API…"
+            touch_sync_progress(log)
             self.db.commit()
 
             repaired, repair_removed = await self._repair_stale_contracts(
@@ -106,6 +108,7 @@ class ContractSyncService:
                         f"Enriching {len(page_batch)} contracts "
                         f"(NAICS {naics_code}, page {pages_scanned})…"
                     )
+                    touch_sync_progress(log)
                     self.db.commit()
                 enriched_fields = await self.client.enrich_awards_batch(
                     page_batch,
@@ -140,6 +143,7 @@ class ContractSyncService:
                         f"Loaded {upserted} contracts so far "
                         f"({pages_scanned} API pages scanned, NAICS {naics_code})…"
                     )
+                touch_sync_progress(log)
                 self.db.commit()
 
                 logger.info(

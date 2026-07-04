@@ -430,6 +430,7 @@ async def run_sync(db: Session = Depends(get_db)):
     log = SyncLog(
         status="running",
         started_at=datetime.utcnow(),
+        progress_at=datetime.utcnow(),
         message="Searching USAspending…",
     )
     db.add(log)

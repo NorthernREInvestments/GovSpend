@@ -149,6 +149,7 @@ class SyncLog(Base):
     contracts_found: Mapped[int] = mapped_column(default=0)
     contracts_upserted: Mapped[int] = mapped_column(default=0)
     pages_scanned: Mapped[int] = mapped_column(default=0)
+    progress_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     status: Mapped[str] = mapped_column(String(32), default="running")
     message: Mapped[str | None] = mapped_column(Text)
 

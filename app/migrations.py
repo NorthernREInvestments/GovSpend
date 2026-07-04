@@ -61,6 +61,10 @@ APP_SETTINGS_COLUMNS = [
     ("recompete_only", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
+SYNC_LOG_COLUMNS = [
+    ("progress_at", "TIMESTAMP"),
+]
+
 
 def _table_exists(inspector, name: str) -> bool:
     return name in inspector.get_table_names()
@@ -139,6 +143,22 @@ def run_migrations() -> None:
                 text(
                     f'UPDATE "{GS_APP_SETTINGS}" SET max_award_amount = 350000 '
                     "WHERE max_award_amount IS NULL"
+                )
+            )
+
+    if _table_exists(inspector, GS_SYNC_LOGS):
+        sync_columns = {col["name"] for col in inspector.get_columns(GS_SYNC_LOGS)}
+        with engine.begin() as conn:
+            for name, col_type in SYNC_LOG_COLUMNS:
+                if name not in sync_columns:
+                    conn.execute(
+                        text(f'ALTER TABLE "{GS_SYNC_LOGS}" ADD COLUMN {name} {col_type}')
+                    )
+                    logger.info("Added column %s to %s", name, GS_SYNC_LOGS)
+            conn.execute(
+                text(
+                    f'UPDATE "{GS_SYNC_LOGS}" SET progress_at = started_at '
+                    "WHERE progress_at IS NULL"
                 )
             )
 

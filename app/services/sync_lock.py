@@ -9,8 +9,17 @@ from app.models import SyncLog
 logger = logging.getLogger(__name__)
 
 _sync_lock = asyncio.Lock()
-STALE_SYNC_HOURS = 6
-STALE_NO_PROGRESS_MINUTES = 15
+STALE_SYNC_HOURS = 3
+STALE_NO_PROGRESS_MINUTES = 25
+
+
+def touch_sync_progress(log: SyncLog) -> None:
+    log.progress_at = datetime.utcnow()
+
+
+def _progress_stale(log: SyncLog, *, now: datetime, no_progress_cutoff: datetime) -> bool:
+    progress_at = log.progress_at or log.started_at
+    return progress_at < no_progress_cutoff
 
 
 class SyncInProgressError(Exception):
@@ -50,15 +59,11 @@ def _mark_stale_running_logs(db: Session) -> None:
                 log,
                 "Marked failed — sync exceeded time limit (likely interrupted by deploy)",
             )
-        elif (
-            (log.pages_scanned or 0) == 0
-            and (log.contracts_upserted or 0) == 0
-            and log.started_at < no_progress_cutoff
-        ):
+        elif _progress_stale(log, now=now, no_progress_cutoff=no_progress_cutoff):
             stale.append(log)
             _fail_running_log(
                 log,
-                "Marked failed — sync made no progress (likely interrupted or hung)",
+                "Marked failed — sync stopped making progress. Click Refresh Now to run again.",
             )
 
     if stale:

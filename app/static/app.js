@@ -128,6 +128,18 @@ function showToast(message) {
   setTimeout(() => toast.classList.add("hidden"), 4000);
 }
 
+function setSyncBusy(busy) {
+  const refreshBtn = document.getElementById("refresh-btn");
+  const saveRefreshBtn = document.getElementById("save-and-refresh-btn");
+  if (refreshBtn) {
+    refreshBtn.disabled = busy;
+    refreshBtn.textContent = busy ? "Syncing…" : "Refresh Now";
+  }
+  if (saveRefreshBtn) {
+    saveRefreshBtn.disabled = busy;
+  }
+}
+
 function updateSyncBanner(data) {
   const banner = document.getElementById("sync-banner");
   const progress = document.getElementById("sync-progress-text");
@@ -140,10 +152,12 @@ function updateSyncBanner(data) {
       data.message ||
       `${loaded} contracts loaded so far (${pages} API pages scanned). Sorted pipeline updates automatically.`;
     banner.classList.remove("hidden");
+    setSyncBusy(true);
     return;
   }
 
   banner.classList.add("hidden");
+  setSyncBusy(false);
 }
 
 function contractTotalValue(contract) {
@@ -384,7 +398,6 @@ async function saveSettings() {
 let syncPollInterval = null;
 
 function startSyncPolling(initialUpserted = 0) {
-  const btn = document.getElementById("refresh-btn");
   let knownUpserted = initialUpserted;
 
   if (syncPollInterval) clearInterval(syncPollInterval);
@@ -396,8 +409,6 @@ function startSyncPolling(initialUpserted = 0) {
       updateSyncBanner(data);
 
       if (data.status === "running") {
-        btn.disabled = true;
-        btn.textContent = "Syncing…";
         if ((data.contracts_upserted || 0) > knownUpserted) {
           knownUpserted = data.contracts_upserted;
           await refreshDashboard();
@@ -408,13 +419,13 @@ function startSyncPolling(initialUpserted = 0) {
       clearInterval(syncPollInterval);
       syncPollInterval = null;
       await refreshDashboard();
-      btn.disabled = false;
-      btn.textContent = "Refresh Now";
+      if (data.status === "failed") {
+        showToast(data.message || "Sync failed — click Refresh Now to try again");
+      }
     } catch {
       clearInterval(syncPollInterval);
       syncPollInterval = null;
-      btn.disabled = false;
-      btn.textContent = "Refresh Now";
+      setSyncBusy(false);
     }
   };
 
@@ -423,9 +434,7 @@ function startSyncPolling(initialUpserted = 0) {
 }
 
 async function runSync() {
-  const btn = document.getElementById("refresh-btn");
-  btn.disabled = true;
-  btn.textContent = "Syncing…";
+  setSyncBusy(true);
   try {
     const response = await fetch("/api/sync/run", { method: "POST" });
     if (response.status === 409) {
@@ -443,8 +452,7 @@ async function runSync() {
     throw new Error("Sync failed");
   } catch (error) {
     showToast(error.message || "Sync failed");
-    btn.disabled = false;
-    btn.textContent = "Refresh Now";
+    setSyncBusy(false);
   }
 }
 
@@ -493,22 +501,21 @@ document.getElementById("save-and-refresh-btn")?.addEventListener("click", async
     await runSync();
   } catch (error) {
     showToast(error.message || "Failed to save settings");
-    btn.disabled = false;
+    setSyncBusy(false);
   }
 });
 
 document.getElementById("refresh-btn")?.addEventListener("click", runSync);
 
-const syncBanner = document.getElementById("sync-banner");
-if (syncBanner && !syncBanner.classList.contains("hidden")) {
-  fetch("/api/sync/status")
-    .then((response) => response.json())
-    .then((data) => {
-      updateSyncBanner(data);
+fetch("/api/sync/status")
+  .then((response) => response.json())
+  .then((data) => {
+    updateSyncBanner(data);
+    if (data.status === "running") {
       startSyncPolling(data.contracts_upserted || 0);
-    })
-    .catch(() => startSyncPolling(0));
-}
+    }
+  })
+  .catch(() => setSyncBusy(false));
 
 const contractsTable = document.getElementById("contracts-tbody");
 if (contractsTable) {
