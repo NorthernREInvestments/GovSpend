@@ -20,14 +20,25 @@ class Settings(BaseSettings):
     max_award_amount: float | None = 350_000
     expiration_days: int = 60
     naics_codes: list[str] = [
-        "561720",
-        "561730",
-        "115310",
-        "561990",
-        "238910",
-        "562111",
-        "488490",
-        "562998",
+        "561720",  # Janitorial Services
+        "561210",  # Facilities Support Services
+        "561730",  # Landscaping Services
+        "561710",  # Pest Control Services
+        "562111",  # Solid Waste Collection
+        "561790",  # Other Services to Buildings and Dwellings
+        "561740",  # Carpet and Upholstery Cleaning
+        "562119",  # Other Waste Collection
+        "561439",  # Document Shredding Services
+        "541930",  # Translation and Interpretation Services
+        "811192",  # Car Wash and Vehicle Cleaning Services
+        "238220",  # Plumbing and HVAC Maintenance Services
+        "562910",  # Remediation Services
+        "484210",  # Moving and Relocation Services
+        "484110",  # General Freight Trucking Local
+        "492110",  # Couriers and Messengers
+        "711320",  # Photography and Videography Services
+        "532490",  # Equipment Rental and Leasing
+        "561422",  # Telephone Answering Services
     ]
     api_page_limit: int = 100
     api_request_delay_seconds: float = 0.25
