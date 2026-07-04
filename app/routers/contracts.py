@@ -202,10 +202,13 @@ def update_watchlist_status(
 
 
 @router.get("/browse", response_model=MarketBrowseRead)
-async def browse_market(db: Session = Depends(get_db)):
+async def browse_market(
+    recompete_only: bool = False,
+    db: Session = Depends(get_db),
+):
     """Live USAspending snapshot — not saved to the database."""
     try:
-        payload = await fetch_market_browse(db)
+        payload = await fetch_market_browse(db, recompete_only=recompete_only)
     except Exception as exc:
         logger.exception("Market browse failed")
         raise HTTPException(status_code=502, detail=str(exc)) from exc

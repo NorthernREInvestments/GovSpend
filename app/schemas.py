@@ -109,6 +109,7 @@ class MarketBrowseRead(BaseModel):
     pursuit_max_annual: float
     browse_min_annual: float
     browse_max_annual: float
+    recompete_only: bool = False
     pages_scanned: int
     candidates_scanned: int
     results: list[BrowseContractRead]

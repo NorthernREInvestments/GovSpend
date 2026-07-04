@@ -578,7 +578,7 @@ function browseFitClass(note) {
 
 function renderBrowseRow(item) {
   const dimClass =
-    item.in_pursuit_range && item.at_recompete && !item.in_pipeline
+    item.in_pursuit_range && item.has_option_years && !item.in_pipeline
       ? ""
       : " browse-row-dim";
   const awardLink = item.generated_internal_id
@@ -621,11 +621,14 @@ async function scanMarket() {
   btn.disabled = true;
   btn.textContent = "Scanning…";
   status.classList.remove("hidden");
-  status.textContent = "Querying USAspending live — final option period only, 30–90 seconds, nothing saved.";
+  const recompeteOnly = Boolean(document.getElementById("recompete-only")?.checked);
+  status.textContent = recompeteOnly
+    ? "Querying USAspending live — recompete only, 30–90 seconds, nothing saved."
+    : "Querying USAspending live — all option statuses, 30–90 seconds, nothing saved.";
   wrap.classList.add("hidden");
 
   try {
-    const response = await fetch("/api/browse");
+    const response = await fetch(`/api/browse?recompete_only=${recompeteOnly}`);
     if (!response.ok) {
       const error = await response.json().catch(() => null);
       throw new Error(error?.detail || "Market scan failed");
@@ -636,7 +639,7 @@ async function scanMarket() {
     status.textContent =
       data.results.length === 0
         ? `No contracts found between ${formatCurrency(data.browse_min_annual)} and ${formatCurrency(data.browse_max_annual)}/yr expiring ${data.window_start}–${data.window_end}.`
-        : `Showing ${data.results.length} live results from ${data.candidates_scanned} candidates (${data.pages_scanned} API pages). Pursuit range: ${formatCurrency(data.pursuit_min_annual)}–${formatCurrency(data.pursuit_max_annual)}/yr.`;
+        : `Showing ${data.results.length} live results from ${data.candidates_scanned} candidates (${data.pages_scanned} API pages). Pursuit range: ${formatCurrency(data.pursuit_min_annual)}–${formatCurrency(data.pursuit_max_annual)}/yr${data.recompete_only ? " · recompete only" : ""}.`;
     if (data.results.length > 0) {
       showToast(`Market scan complete — ${data.results.length} contracts`);
     }
