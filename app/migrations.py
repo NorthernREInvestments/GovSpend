@@ -51,6 +51,9 @@ NEW_COLUMNS = [
     ("total_runway_years", "DOUBLE PRECISION"),
     ("recurring_fit", "VARCHAR(128) NOT NULL DEFAULT ''"),
     ("recurring_fit_score", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("recurrence_pattern", "VARCHAR(128) NOT NULL DEFAULT ''"),
+    ("option_extensions_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("prior_similar_awards_count", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 APP_SETTINGS_COLUMNS = [

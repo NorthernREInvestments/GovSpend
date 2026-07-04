@@ -22,6 +22,7 @@ from app.services.scoring import (
     effective_annual_value,
     evaluate_contract_pursuit,
     format_period_years,
+    recurrence_pattern_class,
     usaspending_award_url,
 )
 from app.database import SessionLocal, get_db
@@ -164,8 +165,6 @@ def _contract_priority_tier(contract: Contract) -> str:
 
 
 def _contract_pursuit_score_display(contract: Contract) -> int:
-    if contract.pursuit_score >= 1:
-        return int(round(contract.pursuit_score))
     return _contract_pursuit_eval(contract).pursuit_score
 
 
@@ -236,6 +235,7 @@ templates.env.filters["recurring_fit_class"] = _recurring_fit_class
 templates.env.filters["pursuit_score_display"] = _contract_pursuit_score_display
 templates.env.filters["expires_display"] = _contract_expires_display
 templates.env.filters["bidders_display"] = _contract_bidders_display
+templates.env.filters["recurrence_pattern_class"] = recurrence_pattern_class
 templates.env.filters["award_url"] = usaspending_award_url
 
 

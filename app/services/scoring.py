@@ -150,6 +150,36 @@ def format_period_years(years: float | None) -> str:
     return f"{years:.1f} yrs"
 
 
+def compute_recurrence_pattern(
+    *,
+    option_extensions_count: int,
+    prior_similar_awards_count: int,
+    period_years: float | None,
+) -> str:
+    if option_extensions_count >= 2:
+        return "Usually extended via options"
+    if option_extensions_count == 1:
+        return "Bid with option years"
+    if prior_similar_awards_count >= 2:
+        return "Usually annual rebid"
+    if prior_similar_awards_count == 1:
+        return "One prior rebid — may recur"
+    if period_years is not None and period_years <= 1.35:
+        return "Likely one-time award"
+    return "Recurrence unclear"
+
+
+def recurrence_pattern_class(pattern: str) -> str:
+    lowered = pattern.lower()
+    if "options" in lowered or "option years" in lowered:
+        return "options"
+    if "annual rebid" in lowered or "prior rebid" in lowered:
+        return "rebid"
+    if "one-time" in lowered:
+        return "onetime"
+    return "unclear"
+
+
 def is_total_small_business_setaside(set_aside: str) -> bool:
     normalized = set_aside.strip().lower()
     return any(marker in normalized for marker in TOTAL_SMALL_BUSINESS_MARKERS)
@@ -201,10 +231,53 @@ def _set_aside_points(set_aside: str) -> int:
 
 def _recompete_points(pop_flag: str) -> int:
     if pop_flag == RECOMPETE_POP_FLAG:
-        return 5
+        return 3
+    return 0
+
+
+def _option_years_points(
+    *,
+    pop_flag: str,
+    recurrence_pattern: str = "",
+    remaining_option_years: float | None = None,
+    potential_end_date: date | None = None,
+    expiration_date: date,
+) -> int:
+    """Prefer contracts with option-year structure over annual rebids or one-time awards."""
+    points = 0
+    has_option_structure = (
+        pop_flag in ("Options Available", RECOMPETE_POP_FLAG)
+        or (
+            potential_end_date is not None
+            and potential_end_date > expiration_date
+        )
+    )
+
     if pop_flag == "Options Available":
-        return 0
-    return 2
+        points += 12
+    elif pop_flag == RECOMPETE_POP_FLAG and has_option_structure:
+        points += 5
+    elif not has_option_structure:
+        points -= 5
+
+    lowered = recurrence_pattern.lower()
+    if "extended via options" in lowered:
+        points += 8
+    elif "bid with option years" in lowered:
+        points += 5
+    elif "annual rebid" in lowered:
+        points -= 10
+    elif "prior rebid" in lowered:
+        points -= 6
+    elif "one-time" in lowered:
+        points -= 12
+
+    if remaining_option_years and remaining_option_years >= 2:
+        points += 4
+    elif remaining_option_years and remaining_option_years > 0:
+        points += 2
+
+    return max(-15, min(20, points))
 
 
 def evaluate_pursuit(
@@ -214,6 +287,9 @@ def evaluate_pursuit(
     number_of_offers_received: int | None = None,
     set_aside: str = "",
     pop_flag: str = "",
+    recurrence_pattern: str = "",
+    remaining_option_years: float | None = None,
+    potential_end_date: date | None = None,
     min_annual_value: float = DEFAULT_MIN_ANNUAL,
     max_annual_value: float = DEFAULT_MAX_ANNUAL,
     today: date | None = None,
@@ -238,13 +314,28 @@ def evaluate_pursuit(
         )
         + _set_aside_points(set_aside)
         + _recompete_points(pop_flag)
+        + _option_years_points(
+            pop_flag=pop_flag,
+            recurrence_pattern=recurrence_pattern,
+            remaining_option_years=remaining_option_years,
+            potential_end_date=potential_end_date,
+            expiration_date=expiration_date,
+        )
     )
     score = max(1, min(100, score))
 
+    no_option_profile = (
+        pop_flag not in ("Options Available", RECOMPETE_POP_FLAG)
+        and recurrence_pattern.lower() in (
+            "usually annual rebid",
+            "likely one-time award",
+        )
+    )
     force_low = (
         days_left > 180
         or not in_range
         or (offers is not None and offers >= 8)
+        or no_option_profile
     )
     if force_low:
         score = min(score, 40 if days_left > 180 or not in_range else 35)
@@ -293,6 +384,9 @@ def compute_pursuit_score(
     number_of_offers_received: int | None = None,
     set_aside: str = "",
     pop_flag: str = "",
+    recurrence_pattern: str = "",
+    remaining_option_years: float | None = None,
+    potential_end_date: date | None = None,
     min_annual_value: float = DEFAULT_MIN_ANNUAL,
     max_annual_value: float = DEFAULT_MAX_ANNUAL,
     today: date | None = None,
@@ -305,6 +399,9 @@ def compute_pursuit_score(
             number_of_offers_received=number_of_offers_received,
             set_aside=set_aside,
             pop_flag=pop_flag,
+            recurrence_pattern=recurrence_pattern,
+            remaining_option_years=remaining_option_years,
+            potential_end_date=potential_end_date,
             min_annual_value=min_annual_value,
             max_annual_value=max_annual_value,
             today=today,
@@ -319,6 +416,9 @@ def priority_tier(
     number_of_offers_received: int | None = None,
     set_aside: str = "",
     pop_flag: str = "",
+    recurrence_pattern: str = "",
+    remaining_option_years: float | None = None,
+    potential_end_date: date | None = None,
     min_annual_value: float = DEFAULT_MIN_ANNUAL,
     max_annual_value: float = DEFAULT_MAX_ANNUAL,
     today: date | None = None,
@@ -330,6 +430,9 @@ def priority_tier(
         number_of_offers_received=number_of_offers_received,
         set_aside=set_aside,
         pop_flag=pop_flag,
+        recurrence_pattern=recurrence_pattern,
+        remaining_option_years=remaining_option_years,
+        potential_end_date=potential_end_date,
         min_annual_value=min_annual_value,
         max_annual_value=max_annual_value,
         today=today,
@@ -422,6 +525,8 @@ def pursuit_score_for_contract(
     expiration_date: date,
     potential_end_date: date | None = None,
     pop_flag: str = "",
+    recurrence_pattern: str = "",
+    remaining_option_years: float | None = None,
     number_of_offers_received: int | None = None,
     set_aside: str = "",
     min_annual_value: float = DEFAULT_MIN_ANNUAL,
@@ -444,6 +549,9 @@ def pursuit_score_for_contract(
         number_of_offers_received=number_of_offers_received,
         set_aside=set_aside,
         pop_flag=pop_flag,
+        recurrence_pattern=recurrence_pattern,
+        remaining_option_years=remaining_option_years,
+        potential_end_date=potential_end_date,
         min_annual_value=min_annual_value,
         max_annual_value=max_annual_value,
         today=today,
@@ -470,6 +578,9 @@ def evaluate_contract_pursuit(
         number_of_offers_received=contract.number_of_offers_received,
         set_aside=contract.set_aside,
         pop_flag=contract.pop_flag,
+        recurrence_pattern=contract.recurrence_pattern or "",
+        remaining_option_years=contract.remaining_option_years,
+        potential_end_date=contract.potential_end_date,
         min_annual_value=min_annual_value,
         max_annual_value=max_annual_value,
         today=today,

@@ -19,6 +19,9 @@ class ContractBase(BaseModel):
     total_runway_years: float | None = None
     recurring_fit: str = ""
     recurring_fit_score: float = 0
+    recurrence_pattern: str = ""
+    option_extensions_count: int = 0
+    prior_similar_awards_count: int = 0
     agency: str
     place_of_performance: str
     incumbent_name: str

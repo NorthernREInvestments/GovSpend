@@ -249,6 +249,9 @@ class ContractSyncService:
             existing.total_runway_years = fields.get("total_runway_years")
             existing.recurring_fit = fields.get("recurring_fit", "")
             existing.recurring_fit_score = fields.get("recurring_fit_score", 0.0)
+            existing.recurrence_pattern = fields.get("recurrence_pattern", "")
+            existing.option_extensions_count = fields.get("option_extensions_count", 0)
+            existing.prior_similar_awards_count = fields.get("prior_similar_awards_count", 0)
             existing.agency = fields["agency"]
             existing.place_of_performance = fields["place_of_performance"]
             existing.incumbent_name = fields["incumbent_name"]

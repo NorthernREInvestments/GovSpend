@@ -27,9 +27,6 @@ def _annual_bounds(db: Session) -> tuple[float, float]:
 
 def contract_pursuit_score(contract: Contract, db: Session) -> float:
     min_annual, max_annual = _annual_bounds(db)
-    stored = contract.pursuit_score or 0
-    if stored >= 1:
-        return stored
     return pursuit_score_for_contract(
         estimated_annual_value=contract.estimated_annual_value,
         total_obligation=contract.total_obligation,
@@ -38,6 +35,8 @@ def contract_pursuit_score(contract: Contract, db: Session) -> float:
         expiration_date=contract.expiration_date,
         potential_end_date=contract.potential_end_date,
         pop_flag=contract.pop_flag,
+        recurrence_pattern=contract.recurrence_pattern or "",
+        remaining_option_years=contract.remaining_option_years,
         number_of_offers_received=contract.number_of_offers_received,
         set_aside=contract.set_aside,
         min_annual_value=min_annual,

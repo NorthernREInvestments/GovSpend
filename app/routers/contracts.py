@@ -54,15 +54,10 @@ def _contract_read(contract: Contract, db: Session) -> ContractRead:
         min_annual_value=settings.min_award_amount,
         max_annual_value=settings.max_award_amount or 350_000,
     )
-    score = (
-        int(round(contract.pursuit_score))
-        if contract.pursuit_score >= 1
-        else evaluation.pursuit_score
-    )
     payload = ContractRead.model_validate(contract).model_dump()
     payload.update(
         {
-            "pursuit_score": score,
+            "pursuit_score": evaluation.pursuit_score,
             "priority_tier_label": evaluation.priority_tier,
             "expires_in_label": (
                 "Expires today"
@@ -280,9 +275,9 @@ def export_contracts(db: Session = Depends(get_db)):
         "Total Obligation",
         "PoP Flag",
         "Recurring Fit",
-        "Period Years",
-        "Options Left Years",
-        "Total Runway Years",
+        "Recurrence Pattern",
+        "Option Extensions",
+        "Prior Similar Awards",
         "Expiration",
         "Potential End",
         "Days Left",
@@ -315,14 +310,14 @@ def export_contracts(db: Session = Depends(get_db)):
         )
         writer.writerow([
             evaluation.priority_tier,
-            evaluation.pursuit_score if c.pursuit_score < 1 else int(round(c.pursuit_score)),
+            evaluation.pursuit_score,
             c.estimated_annual_value,
             c.total_obligation,
             c.pop_flag,
             c.recurring_fit,
-            c.period_years if c.period_years is not None else "",
-            c.remaining_option_years if c.remaining_option_years is not None else "",
-            c.total_runway_years if c.total_runway_years is not None else "",
+            c.recurrence_pattern,
+            c.option_extensions_count,
+            c.prior_similar_awards_count,
             c.expiration_date.isoformat(),
             c.potential_end_date.isoformat() if c.potential_end_date else "",
             evaluation.days_until_expiration,

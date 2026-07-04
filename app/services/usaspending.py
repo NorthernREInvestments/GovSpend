@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
 from datetime import date, timedelta
 from typing import Any
@@ -8,9 +9,11 @@ import httpx
 
 from app.config import settings
 from app.services.scoring import (
+    actual_period_years,
     compute_estimated_annual_value,
     compute_pop_flag,
     compute_pursuit_score,
+    compute_recurrence_pattern,
     compute_recurring_profile,
 )
 
@@ -290,6 +293,14 @@ class USAspendingClient:
                     generated_internal_id,
                     include_co=False,
                 )
+                enrichment.update(
+                    await self._enrich_recurrence_history(
+                        shared_client,
+                        row,
+                        enrichment,
+                        generated_internal_id,
+                    )
+                )
                 return map_award_to_contract_fields(
                     row,
                     enrichment,
@@ -422,6 +433,143 @@ class USAspendingClient:
         except httpx.HTTPError:
             return ""
 
+    async def _enrich_recurrence_history(
+        self,
+        client: httpx.AsyncClient,
+        row: dict[str, Any],
+        enrichment: dict[str, Any],
+        generated_internal_id: str | None,
+    ) -> dict[str, Any]:
+        empty = {
+            "option_extensions_count": 0,
+            "prior_similar_awards_count": 0,
+        }
+        if not generated_internal_id:
+            return empty
+
+        transactions = await self._fetch_award_transactions(client, generated_internal_id)
+        option_extensions_count = _count_option_extensions(transactions)
+
+        start_date = enrichment.get("start_date") or parse_end_date(row.get("Start Date"))
+        prior_similar_awards_count = 0
+        if option_extensions_count < 2 and start_date:
+            prior_similar_awards_count = await self._search_prior_similar_awards(
+                client,
+                row,
+                start_date=start_date,
+                current_award_id=row.get("Award ID") or "",
+            )
+
+        return {
+            "option_extensions_count": option_extensions_count,
+            "prior_similar_awards_count": prior_similar_awards_count,
+        }
+
+    async def _fetch_award_transactions(
+        self,
+        client: httpx.AsyncClient,
+        generated_internal_id: str,
+    ) -> list[dict[str, Any]]:
+        try:
+            response = await client.post(
+                f"{self.base_url}/api/v2/transactions/",
+                json={
+                    "award_id": generated_internal_id,
+                    "page": 1,
+                    "limit": 100,
+                    "sort": "action_date",
+                    "order": "asc",
+                },
+            )
+            response.raise_for_status()
+            return response.json().get("results", [])
+        except httpx.HTTPError:
+            logger.warning("Failed to fetch transactions for %s", generated_internal_id)
+            return []
+
+    async def _search_prior_similar_awards(
+        self,
+        client: httpx.AsyncClient,
+        row: dict[str, Any],
+        *,
+        start_date: date,
+        current_award_id: str,
+    ) -> int:
+        naics_code = parse_naics_code(row.get("NAICS"))
+        keywords = _search_keywords(row)
+        if not naics_code or not keywords:
+            return 0
+
+        lookback = start_date - timedelta(days=3650)
+        window_end = start_date - timedelta(days=1)
+        if window_end < lookback:
+            return 0
+
+        try:
+            response = await client.post(
+                f"{self.base_url}/api/v2/search/spending_by_award/",
+                json={
+                    "filters": {
+                        "award_type_codes": ["A", "B", "C", "D"],
+                        "naics_codes": [naics_code],
+                        "time_period": [
+                            {
+                                "start_date": lookback.isoformat(),
+                                "end_date": window_end.isoformat(),
+                            }
+                        ],
+                        "keywords": keywords[:1],
+                    },
+                    "fields": ["Award ID", "Start Date", "End Date"],
+                    "limit": 25,
+                    "page": 1,
+                    "sort": "End Date",
+                    "order": "desc",
+                },
+            )
+            response.raise_for_status()
+            results = response.json().get("results", [])
+        except httpx.HTTPError:
+            logger.warning("Failed prior-award search for %s", current_award_id)
+            return 0
+
+        count = 0
+        for prior in results:
+            prior_award_id = prior.get("Award ID") or ""
+            if not prior_award_id or prior_award_id == current_award_id:
+                continue
+            if _is_short_period_award(prior.get("Start Date"), prior.get("End Date")):
+                count += 1
+        return count
+
+
+def _count_option_extensions(transactions: list[dict[str, Any]]) -> int:
+    return sum(
+        1
+        for transaction in transactions
+        if "EXERCISE AN OPTION" in (transaction.get("action_type_description") or "").upper()
+    )
+
+
+def _search_keywords(row: dict[str, Any]) -> list[str]:
+    city, state = parse_location(row.get("Primary Place of Performance"))
+    if city:
+        return [city]
+    if state:
+        return [state]
+    description = (row.get("Description") or "").strip()
+    words = [word for word in re.split(r"[^\w]+", description) if len(word) > 4]
+    return words[:2]
+
+
+def _is_short_period_award(start_value: str | None, end_value: str | None) -> bool:
+    start_date = parse_end_date(start_value)
+    end_date = parse_end_date(end_value)
+    if not start_date or not end_date:
+        return False
+    period = actual_period_years(start_date, end_date)
+    return period is not None and 0.4 <= period <= 1.6
+
 
 def contract_to_award_row(contract: Any) -> dict[str, Any]:
     return {
@@ -477,6 +625,11 @@ def map_award_to_contract_fields(
     contracting_office = enrichment.get("contracting_office") or subtier
     pop = row.get("Primary Place of Performance")
     location_city, location_state = parse_location(pop)
+    recurrence_pattern = compute_recurrence_pattern(
+        option_extensions_count=enrichment.get("option_extensions_count", 0),
+        prior_similar_awards_count=enrichment.get("prior_similar_awards_count", 0),
+        period_years=recurring["period_years"],
+    )
 
     return {
         "award_id": award_id,
@@ -494,6 +647,9 @@ def map_award_to_contract_fields(
         "total_runway_years": recurring["total_runway_years"],
         "recurring_fit": recurring["recurring_fit"],
         "recurring_fit_score": recurring["recurring_fit_score"],
+        "recurrence_pattern": recurrence_pattern,
+        "option_extensions_count": enrichment.get("option_extensions_count", 0),
+        "prior_similar_awards_count": enrichment.get("prior_similar_awards_count", 0),
         "agency": row.get("Awarding Agency") or "Unknown Agency",
         "place_of_performance": format_place_of_performance(pop),
         "location_city": location_city,
@@ -514,6 +670,9 @@ def map_award_to_contract_fields(
             number_of_offers_received=enrichment.get("number_of_offers_received"),
             set_aside=enrichment.get("set_aside") or "",
             pop_flag=pop_flag,
+            recurrence_pattern=recurrence_pattern,
+            remaining_option_years=recurring["remaining_option_years"],
+            potential_end_date=potential_end_date,
             min_annual_value=min_annual_value,
             max_annual_value=max_annual_value,
         ),

@@ -131,6 +131,9 @@
           <p class="card-highlight expires-highlight">{{ lead | expires_display }}</p>
           <p class="card-highlight bidders-highlight">{{ lead | bidders_display }}</p>
           <h3>{{ lead.contract_name }}</h3>
+          {% if lead.recurrence_pattern %}
+          <p class="recurrence-pattern recurrence-pattern-{{ lead.recurrence_pattern | recurrence_pattern_class }}">{{ lead.recurrence_pattern }}</p>
+          {% endif %}
           {% if lead.pop_flag %}
           <p class="pop-flag pop-flag-{{ 'final' if 'Final' in lead.pop_flag else 'options' }}">{{ lead.pop_flag }}</p>
           {% endif %}
@@ -162,7 +165,7 @@
       <div class="table-header">
         <h2>Pursuit Pipeline</h2>
         <p id="pipeline-subtitle">
-          Sorted by pursuit score (1–100) — urgency, competition, annual value, and set-aside fit.
+          Sorted by pursuit score (1–100) — option-year contracts rank higher than annual rebids.
           {% if app_settings.recompete_only %}
           Showing <strong>recompete only</strong> (option years hidden).
           {% else %}
@@ -221,6 +224,9 @@
               </td>
               <td>
                 <div class="contract-name">{{ contract.contract_name }}</div>
+                {% if contract.recurrence_pattern %}
+                <div class="recurrence-pattern recurrence-pattern-{{ contract.recurrence_pattern | recurrence_pattern_class }}">{{ contract.recurrence_pattern }}</div>
+                {% endif %}
                 {% if contract.pop_flag %}
                 <div class="pop-flag pop-flag-{{ 'final' if 'Final' in contract.pop_flag else 'options' }}">{{ contract.pop_flag }}</div>
                 {% endif %}

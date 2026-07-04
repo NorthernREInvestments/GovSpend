@@ -62,6 +62,18 @@ function popFlagClass(popFlag) {
   return popFlag.includes("Final") ? "final" : "options";
 }
 
+function renderRecurrencePattern(pattern) {
+  if (!pattern) return "";
+  const patternClass = pattern.toLowerCase().includes("options") || pattern.toLowerCase().includes("option years")
+    ? "options"
+    : pattern.toLowerCase().includes("annual rebid") || pattern.toLowerCase().includes("prior rebid")
+      ? "rebid"
+      : pattern.toLowerCase().includes("one-time")
+        ? "onetime"
+        : "unclear";
+  return `<div class="recurrence-pattern recurrence-pattern-${patternClass}">${escapeHtml(pattern)}</div>`;
+}
+
 function renderPopFlag(popFlag) {
   if (!popFlag) return "";
   return `<div class="pop-flag pop-flag-${popFlagClass(popFlag)}">${escapeHtml(popFlag)}</div>`;
@@ -224,6 +236,7 @@ function renderContractRow(contract, statuses) {
       </td>
       <td>
         <div class="contract-name">${escapeHtml(contract.contract_name)}</div>
+        ${renderRecurrencePattern(contract.recurrence_pattern)}
         ${renderPopFlag(contract.pop_flag)}
         ${renderRecurringFit(contract.recurring_fit)}
         <div class="contract-meta">
@@ -272,6 +285,7 @@ function renderHotLead(lead) {
       <p class="card-highlight expires-highlight">${escapeHtml(expiresDisplay(lead))}</p>
       <p class="card-highlight bidders-highlight">${escapeHtml(biddersDisplay(lead))}</p>
       <h3>${escapeHtml(lead.contract_name)}</h3>
+      ${renderRecurrencePattern(lead.recurrence_pattern)}
       ${renderPopFlag(lead.pop_flag)}
       ${renderRecurringFit(lead.recurring_fit)}
       <p class="hot-meta">Ends ${escapeHtml(lead.expiration_date)} · ${escapeHtml(lead.agency)}</p>
@@ -439,7 +453,7 @@ function updatePipelineSubtitle(recompeteOnly) {
   if (!subtitle) return;
   subtitle.innerHTML = recompeteOnly
     ? "Sorted by pursuit score (1–100). Showing <strong>recompete only</strong> (option years hidden)."
-    : "Sorted by pursuit score (1–100) — urgency, competition, annual value, and set-aside fit.";
+    : "Sorted by pursuit score (1–100) — option-year contracts rank higher than annual rebids.";
 }
 
 async function applyRecompeteFilter() {
