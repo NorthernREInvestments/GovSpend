@@ -128,6 +128,35 @@ function showToast(message) {
   setTimeout(() => toast.classList.add("hidden"), 4000);
 }
 
+function formatSettingsSubtitle(settings) {
+  const min = formatCurrency(settings.min_award_amount);
+  const max = settings.max_award_amount ? formatCurrency(settings.max_award_amount) : null;
+  const range = max ? `${min}–${max}/yr est.` : `${min}+/yr est.`;
+  return `Prioritized option-year contracts · ${settings.expiration_days}-day window · ${range} · target NAICS`;
+}
+
+function updateSettingsSubtitle(settings) {
+  const subtitle = document.getElementById("settings-subtitle");
+  if (subtitle && settings) {
+    subtitle.textContent = formatSettingsSubtitle(settings);
+  }
+}
+
+function populateSettingsForm(settings) {
+  const minInput = document.getElementById("min-award-amount");
+  const maxInput = document.getElementById("max-award-amount");
+  const daysInput = document.getElementById("expiration-days");
+  const recompeteInput = document.getElementById("recompete-only");
+  if (!minInput || !maxInput || !daysInput || !settings) return;
+
+  minInput.value = Math.round(settings.min_award_amount);
+  maxInput.value = Math.round(settings.max_award_amount || 350000);
+  daysInput.value = settings.expiration_days;
+  if (recompeteInput) {
+    recompeteInput.checked = Boolean(settings.recompete_only);
+  }
+}
+
 function setSyncBusy(busy) {
   const refreshBtn = document.getElementById("refresh-btn");
   const saveRefreshBtn = document.getElementById("save-and-refresh-btn");
@@ -392,7 +421,9 @@ async function saveSettings() {
     }
     throw new Error("Failed to save settings");
   }
-  return response.json();
+  const saved = await response.json();
+  updateSettingsSubtitle(saved);
+  return saved;
 }
 
 let syncPollInterval = null;
@@ -436,6 +467,7 @@ function startSyncPolling(initialUpserted = 0) {
 async function runSync() {
   setSyncBusy(true);
   try {
+    await saveSettings();
     const response = await fetch("/api/sync/run", { method: "POST" });
     if (response.status === 409) {
       showToast("Sync already running — pipeline will update in sorted order");
@@ -506,6 +538,16 @@ document.getElementById("save-and-refresh-btn")?.addEventListener("click", async
 });
 
 document.getElementById("refresh-btn")?.addEventListener("click", runSync);
+
+fetch("/api/settings")
+  .then((response) => (response.ok ? response.json() : null))
+  .then((settings) => {
+    if (settings) {
+      populateSettingsForm(settings);
+      updateSettingsSubtitle(settings);
+    }
+  })
+  .catch(() => {});
 
 fetch("/api/sync/status")
   .then((response) => response.json())
