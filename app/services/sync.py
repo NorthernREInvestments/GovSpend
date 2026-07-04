@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Contract, ContractStatus, SyncLog
 from app.services.app_settings import get_sync_config
-from app.services.scoring import annual_value_in_range
+from app.services.scoring import annual_value_in_range, fields_have_option_year_structure
 from app.services.sync_lock import acquire_sync_lock, get_running_sync_log, release_sync_lock
 from app.services.usaspending import USAspendingClient, contract_to_award_row
 from app.services.watchlist import (
@@ -95,6 +95,7 @@ class ContractSyncService:
             watchlist_upserted = 0
             pages_scanned = 0
             skipped_annual = 0
+            skipped_no_options = 0
 
             async for page_batch, pages, naics_code in self.client.stream_expiring_contracts(
                 window_start, window_end
@@ -109,6 +110,9 @@ class ContractSyncService:
                         max_annual,
                     ):
                         skipped_annual += 1
+                        continue
+                    if not fields_have_option_year_structure(fields):
+                        skipped_no_options += 1
                         continue
                     upserted += self._upsert_contract(fields, commit=False)
                     watchlist_upserted += upsert_watchlist(self.db, fields, commit=False)
@@ -130,14 +134,17 @@ class ContractSyncService:
                 self.db.commit()
 
                 logger.info(
-                    "Scanned page %s (NAICS %s) — %s in batch, %s saved, %s outside annual range",
+                    "Scanned page %s (NAICS %s) — %s in batch, %s saved, "
+                    "%s outside annual range, %s without option years",
                     pages_scanned,
                     naics_code,
                     len(page_batch),
                     upserted,
                     skipped_annual,
+                    skipped_no_options,
                 )
 
+            no_options_removed = self._remove_without_option_structure()
             expired_removed = self._remove_stale_contracts(window_start)
             out_of_window_removed = self._remove_out_of_window_contracts(window_end)
             outside_annual_removed = self._remove_outside_annual_range(min_annual, max_annual)
@@ -150,9 +157,11 @@ class ContractSyncService:
             log.message = (
                 f"Upserted {upserted} contracts and {watchlist_upserted} watchlist entries. "
                 f"Skipped {skipped_annual} outside ${min_annual:,.0f}"
-                f"{f'–${max_annual:,.0f}' if max_annual is not None else '+'}/yr est. annual range. "
+                f"{f'–${max_annual:,.0f}' if max_annual is not None else '+'}/yr est. annual range "
+                f"and {skipped_no_options} without option-year structure. "
                 f"Removed {expired_removed} expired, {out_of_window_removed} outside window"
-                f"{f', {outside_annual_removed} outside annual range' if outside_annual_removed else ''}. "
+                f"{f', {outside_annual_removed} outside annual range' if outside_annual_removed else ''}"
+                f"{f', {no_options_removed} without option years' if no_options_removed else ''}. "
                 f"Watchlist cleanup: {watchlist_stale} expired, {watchlist_outside} outside window."
             )
             log.finished_at = datetime.utcnow()
@@ -211,7 +220,7 @@ class ContractSyncService:
                     fields.get("estimated_annual_value"),
                     min_annual,
                     max_annual,
-                ):
+                ) or not fields_have_option_year_structure(fields):
                     if existing:
                         self.db.delete(existing)
                         removed += 1
@@ -305,6 +314,19 @@ class ContractSyncService:
             .filter(Contract.expiration_date > window_end)
             .all()
         )
+        for contract in outside:
+            self.db.delete(contract)
+        self.db.commit()
+        return len(outside)
+
+    def _remove_without_option_structure(self) -> int:
+        from app.services.scoring import contract_has_option_year_structure
+
+        outside = [
+            contract
+            for contract in self.db.query(Contract).all()
+            if not contract_has_option_year_structure(contract)
+        ]
         for contract in outside:
             self.db.delete(contract)
         self.db.commit()

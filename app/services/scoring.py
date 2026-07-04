@@ -469,6 +469,80 @@ def is_recompete_candidate(pop_flag: str) -> bool:
     return pop_flag == RECOMPETE_POP_FLAG
 
 
+def has_option_year_structure(
+    *,
+    pop_flag: str = "",
+    potential_end_date: date | None = None,
+    expiration_date: date,
+    base_all_options_value: float | None = None,
+    remaining_option_years: float | None = None,
+    total_runway_years: float | None = None,
+    period_years: float | None = None,
+    option_extensions_count: int = 0,
+    recurrence_pattern: str = "",
+) -> bool:
+    """True when the award vehicle has multi-year option structure (not a pure annual rebid)."""
+    if pop_flag in ("Options Available", RECOMPETE_POP_FLAG):
+        return True
+    if potential_end_date and potential_end_date > expiration_date:
+        return True
+    if (base_all_options_value or 0) > 0:
+        return True
+    if remaining_option_years and remaining_option_years > 0:
+        return True
+    if (
+        total_runway_years is not None
+        and period_years is not None
+        and total_runway_years > period_years + 0.25
+    ):
+        return True
+    if option_extensions_count >= 1:
+        return True
+    lowered = recurrence_pattern.lower()
+    if "option" in lowered:
+        return True
+    return False
+
+
+def contract_has_option_year_structure(contract) -> bool:
+    return has_option_year_structure(
+        pop_flag=contract.pop_flag or "",
+        potential_end_date=contract.potential_end_date,
+        expiration_date=contract.expiration_date,
+        base_all_options_value=contract.base_all_options_value,
+        remaining_option_years=contract.remaining_option_years,
+        total_runway_years=contract.total_runway_years,
+        period_years=contract.period_years,
+        option_extensions_count=contract.option_extensions_count or 0,
+        recurrence_pattern=contract.recurrence_pattern or "",
+    )
+
+
+def fields_have_option_year_structure(fields: dict) -> bool:
+    expiration_date = fields.get("expiration_date")
+    if expiration_date is None:
+        return False
+    return has_option_year_structure(
+        pop_flag=fields.get("pop_flag", ""),
+        potential_end_date=fields.get("potential_end_date"),
+        expiration_date=expiration_date,
+        base_all_options_value=fields.get("base_all_options_value"),
+        remaining_option_years=fields.get("remaining_option_years"),
+        total_runway_years=fields.get("total_runway_years"),
+        period_years=fields.get("period_years"),
+        option_extensions_count=fields.get("option_extensions_count", 0),
+        recurrence_pattern=fields.get("recurrence_pattern", ""),
+    )
+
+
+def apply_option_years_filter(contracts: list) -> list:
+    return [
+        contract
+        for contract in contracts
+        if contract_has_option_year_structure(contract)
+    ]
+
+
 def apply_recompete_filter(contracts: list, *, recompete_only: bool) -> list:
     if not recompete_only:
         return contracts

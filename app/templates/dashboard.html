@@ -13,7 +13,7 @@
         <p class="eyebrow">Government Contract Intelligence</p>
         <h1>GovSpend</h1>
         <p class="subtitle" id="settings-subtitle">
-          Prioritized recompete opportunities · {{ app_settings.expiration_days }}-day window ·
+          Prioritized option-year contracts · {{ app_settings.expiration_days }}-day window ·
           {% if app_settings.max_award_amount %}
           ${{ "{:,.0f}".format(app_settings.min_award_amount) }}–${{ "{:,.0f}".format(app_settings.max_award_amount) }}/yr est. ·
           {% else %}
@@ -165,7 +165,7 @@
       <div class="table-header">
         <h2>Pursuit Pipeline</h2>
         <p id="pipeline-subtitle">
-          Sorted by pursuit score (1–100) — option-year contracts rank higher than annual rebids.
+          Sorted by pursuit score (1–100) — option-year contracts only; pure annual rebids excluded.
           {% if app_settings.recompete_only %}
           Showing <strong>recompete only</strong> (option years hidden).
           {% else %}

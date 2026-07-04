@@ -30,6 +30,7 @@ from app.services.govtracker import apply_govtracker_match, find_watchlist_match
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.cleanup import CleanupService
 from app.services.scoring import (
+    apply_option_years_filter,
     apply_recompete_filter,
     effective_annual_value,
     evaluate_contract_pursuit,
@@ -223,6 +224,7 @@ def list_contracts(
     if status:
         contracts = [contract for contract in contracts if contract.status == status]
     settings = get_or_create_app_settings(db)
+    contracts = apply_option_years_filter(contracts)
     contracts = apply_recompete_filter(contracts, recompete_only=settings.recompete_only)
     return sort_pursuit_contracts(contracts, db)
 
@@ -262,8 +264,11 @@ def update_contract_notes(
 @router.get("/contracts/export")
 def export_contracts(db: Session = Depends(get_db)):
     settings = get_or_create_app_settings(db)
-    contracts = apply_recompete_filter(
+    contracts = apply_option_years_filter(
         sort_pursuit_contracts(pursuit_contracts_query(db).all(), db),
+    )
+    contracts = apply_recompete_filter(
+        contracts,
         recompete_only=settings.recompete_only,
     )
     output = io.StringIO()

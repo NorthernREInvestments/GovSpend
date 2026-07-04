@@ -453,7 +453,7 @@ function updatePipelineSubtitle(recompeteOnly) {
   if (!subtitle) return;
   subtitle.innerHTML = recompeteOnly
     ? "Sorted by pursuit score (1–100). Showing <strong>recompete only</strong> (option years hidden)."
-    : "Sorted by pursuit score (1–100) — option-year contracts rank higher than annual rebids.";
+    : "Sorted by pursuit score (1–100) — option-year contracts only; pure annual rebids excluded.";
 }
 
 async function applyRecompeteFilter() {

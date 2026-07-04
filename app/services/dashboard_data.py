@@ -6,6 +6,7 @@ from app.models import Contract, ContractStatus
 from app.schemas import DashboardStats
 from app.services.app_settings import get_or_create_app_settings
 from app.services.scoring import (
+    apply_option_years_filter,
     apply_recompete_filter,
     effective_annual_value,
     evaluate_contract_pursuit,
@@ -67,6 +68,7 @@ def build_dashboard_data(db: Session) -> dict:
         if contract.status not in (ContractStatus.WON, ContractStatus.LOST)
     ]
     contract_rows = actionable or all_contracts
+    contract_rows = apply_option_years_filter(contract_rows)
     contract_rows = apply_recompete_filter(
         contract_rows,
         recompete_only=settings.recompete_only,
