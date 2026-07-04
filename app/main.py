@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.startup import init_database, is_db_ready
+from app.services.app_settings import get_or_create_app_settings
 from app.services.dashboard_data import build_dashboard_data
 from app.services.scoring import (
     compute_recurring_profile,
@@ -29,7 +30,6 @@ from app.services.scoring import (
 from app.database import SessionLocal, get_db
 from app.models import Contract, ContractStatus, SyncLog
 from app.routers import contracts
-from app.services.app_settings import get_or_create_app_settings
 from app.services.cleanup import CleanupService
 from app.services.sync import ContractSyncService
 from app.services.sync_lock import SyncInProgressError, clear_orphaned_running_syncs, is_sync_running
@@ -274,6 +274,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "statuses": [status.value for status in ContractStatus],
             "latest_sync": latest_sync,
             "sync_running": sync_running,
+            "asset_version": settings.static_asset_version,
             "now": datetime.utcnow(),
         },
     )

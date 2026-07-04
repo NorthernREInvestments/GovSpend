@@ -169,6 +169,14 @@ function setSyncBusy(busy) {
   }
 }
 
+async function refreshSyncStatus() {
+  const response = await fetch("/api/sync/status");
+  if (!response.ok) throw new Error("Failed to read sync status");
+  const data = await response.json();
+  updateSyncBanner(data);
+  return data;
+}
+
 function updateSyncBanner(data) {
   const banner = document.getElementById("sync-banner");
   const progress = document.getElementById("sync-progress-text");
@@ -427,6 +435,7 @@ async function saveSettings() {
 }
 
 let syncPollInterval = null;
+const SYNC_POLL_MS = 5000;
 
 function startSyncPolling(initialUpserted = 0) {
   let knownUpserted = initialUpserted;
@@ -435,9 +444,7 @@ function startSyncPolling(initialUpserted = 0) {
 
   const poll = async () => {
     try {
-      const response = await fetch("/api/sync/status");
-      const data = await response.json();
-      updateSyncBanner(data);
+      const data = await refreshSyncStatus();
 
       if (data.status === "running") {
         if ((data.contracts_upserted || 0) > knownUpserted) {
@@ -452,31 +459,43 @@ function startSyncPolling(initialUpserted = 0) {
       await refreshDashboard();
       if (data.status === "failed") {
         showToast(data.message || "Sync failed — click Refresh Now to try again");
+      } else if (data.status === "success") {
+        showToast("Sync complete — pipeline updated");
       }
     } catch {
       clearInterval(syncPollInterval);
       syncPollInterval = null;
-      setSyncBusy(false);
+      try {
+        await refreshSyncStatus();
+      } catch {
+        setSyncBusy(false);
+      }
     }
   };
 
   poll();
-  syncPollInterval = setInterval(poll, 15000);
+  syncPollInterval = setInterval(poll, SYNC_POLL_MS);
 }
 
 async function runSync() {
-  setSyncBusy(true);
   try {
     await saveSettings();
+  } catch (error) {
+    showToast(error.message || "Failed to save settings");
+    return;
+  }
+
+  setSyncBusy(true);
+  try {
     const response = await fetch("/api/sync/run", { method: "POST" });
     if (response.status === 409) {
-      showToast("Sync already running — pipeline will update in sorted order");
+      showToast("Sync already running — pipeline will update automatically");
       startSyncPolling(0);
       return;
     }
     if (response.status === 202 || response.ok) {
       const data = await response.json();
-      showToast("Sync started — contracts will appear sorted by pursuit score");
+      showToast("Sync started — this can take 10–30 minutes for a full scan");
       updateSyncBanner(data);
       startSyncPolling(data.contracts_upserted || 0);
       return;
@@ -525,11 +544,7 @@ document.getElementById("settings-form")?.addEventListener("submit", async (even
 });
 
 document.getElementById("save-and-refresh-btn")?.addEventListener("click", async () => {
-  const btn = document.getElementById("save-and-refresh-btn");
-  btn.disabled = true;
   try {
-    await saveSettings();
-    showToast("Settings saved — syncing…");
     await runSync();
   } catch (error) {
     showToast(error.message || "Failed to save settings");
@@ -539,25 +554,23 @@ document.getElementById("save-and-refresh-btn")?.addEventListener("click", async
 
 document.getElementById("refresh-btn")?.addEventListener("click", runSync);
 
-fetch("/api/settings")
-  .then((response) => (response.ok ? response.json() : null))
-  .then((settings) => {
-    if (settings) {
-      populateSettingsForm(settings);
-      updateSettingsSubtitle(settings);
-    }
-  })
-  .catch(() => {});
-
-fetch("/api/sync/status")
-  .then((response) => response.json())
+refreshSyncStatus()
   .then((data) => {
-    updateSyncBanner(data);
     if (data.status === "running") {
       startSyncPolling(data.contracts_upserted || 0);
     }
   })
   .catch(() => setSyncBusy(false));
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    refreshSyncStatus().then((data) => {
+      if (data.status === "running" && !syncPollInterval) {
+        startSyncPolling(data.contracts_upserted || 0);
+      }
+    }).catch(() => setSyncBusy(false));
+  }
+});
 
 const contractsTable = document.getElementById("contracts-tbody");
 if (contractsTable) {
