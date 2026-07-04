@@ -469,6 +469,10 @@ def is_recompete_candidate(pop_flag: str) -> bool:
     return pop_flag == RECOMPETE_POP_FLAG
 
 
+MIN_OPTION_VEHICLE_PERIOD_YEARS = 2.0
+SHORT_PERIOD_MAX_YEARS = 1.35
+
+
 def has_option_year_structure(
     *,
     pop_flag: str = "",
@@ -481,26 +485,51 @@ def has_option_year_structure(
     option_extensions_count: int = 0,
     recurrence_pattern: str = "",
 ) -> bool:
-    """True when the award vehicle has multi-year option structure (not a pure annual rebid)."""
-    if pop_flag in ("Options Available", RECOMPETE_POP_FLAG):
+    """True when the award vehicle has real multi-year option structure."""
+    if pop_flag == "Options Available":
         return True
+
+    if option_extensions_count >= 1:
+        return True
+
+    lowered = recurrence_pattern.lower()
+    if "extended via options" in lowered or "bid with option years" in lowered:
+        return True
+
     if potential_end_date and potential_end_date > expiration_date:
         return True
-    if (base_all_options_value or 0) > 0:
-        return True
+
     if remaining_option_years and remaining_option_years > 0:
         return True
+
     if (
         total_runway_years is not None
         and period_years is not None
         and total_runway_years > period_years + 0.25
     ):
         return True
-    if option_extensions_count >= 1:
+
+    if (
+        period_years is not None
+        and period_years >= MIN_OPTION_VEHICLE_PERIOD_YEARS
+        and pop_flag == RECOMPETE_POP_FLAG
+    ):
         return True
-    lowered = recurrence_pattern.lower()
-    if "option" in lowered:
+
+    if (
+        period_years is not None
+        and period_years <= SHORT_PERIOD_MAX_YEARS
+        and total_runway_years is not None
+        and total_runway_years <= period_years + 0.1
+    ):
+        return False
+
+    if (base_all_options_value or 0) > 0 and (
+        (period_years or 0) >= MIN_OPTION_VEHICLE_PERIOD_YEARS
+        or (total_runway_years or 0) > (period_years or 0) + 0.25
+    ):
         return True
+
     return False
 
 
