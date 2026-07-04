@@ -578,7 +578,7 @@ function browseFitClass(note) {
 
 function renderBrowseRow(item) {
   const dimClass =
-    item.in_pursuit_range && item.has_option_years && !item.in_pipeline
+    item.in_pursuit_range && item.at_recompete && !item.in_pipeline
       ? ""
       : " browse-row-dim";
   const awardLink = item.generated_internal_id
@@ -621,7 +621,7 @@ async function scanMarket() {
   btn.disabled = true;
   btn.textContent = "Scanning…";
   status.classList.remove("hidden");
-  status.textContent = "Querying USAspending live — this takes 30–90 seconds and nothing is saved.";
+  status.textContent = "Querying USAspending live — final option period only, 30–90 seconds, nothing saved.";
   wrap.classList.add("hidden");
 
   try {
