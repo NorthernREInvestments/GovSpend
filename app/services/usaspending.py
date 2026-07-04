@@ -209,6 +209,12 @@ class USAspendingClient:
                 f"{self.base_url}/api/v2/search/spending_by_award/",
                 json=payload,
             )
+            if response.status_code in {429, 500, 502, 503, 504}:
+                await asyncio.sleep(2)
+                response = await client.post(
+                    f"{self.base_url}/api/v2/search/spending_by_award/",
+                    json=payload,
+                )
             response.raise_for_status()
             data = response.json()
             page_results = data.get("results", [])
@@ -278,6 +284,7 @@ class USAspendingClient:
         awards: list[dict[str, Any]],
         *,
         concurrency: int = 6,
+        include_prior_search: bool = False,
     ) -> list[dict[str, Any]]:
         if not awards:
             return []
@@ -285,31 +292,38 @@ class USAspendingClient:
         semaphore = asyncio.Semaphore(concurrency)
         shared_client = httpx.AsyncClient(timeout=60.0)
 
-        async def enrich_one(row: dict[str, Any]) -> dict[str, Any]:
-            async with semaphore:
-                generated_internal_id = row.get("generated_internal_id")
-                enrichment = await self._enrich_award_with_client(
-                    shared_client,
-                    generated_internal_id,
-                    include_co=False,
-                )
-                enrichment.update(
-                    await self._enrich_recurrence_history(
+        async def enrich_one(row: dict[str, Any]) -> dict[str, Any] | None:
+            award_id = row.get("Award ID") or "unknown"
+            try:
+                async with semaphore:
+                    generated_internal_id = row.get("generated_internal_id")
+                    enrichment = await self._enrich_award_with_client(
                         shared_client,
+                        generated_internal_id,
+                        include_co=False,
+                    )
+                    enrichment.update(
+                        await self._enrich_recurrence_history(
+                            shared_client,
+                            row,
+                            enrichment,
+                            generated_internal_id,
+                            include_prior_search=include_prior_search,
+                        )
+                    )
+                    return map_award_to_contract_fields(
                         row,
                         enrichment,
-                        generated_internal_id,
+                        min_annual_value=self.min_annual_value,
+                        max_annual_value=self.max_annual_value,
                     )
-                )
-                return map_award_to_contract_fields(
-                    row,
-                    enrichment,
-                    min_annual_value=self.min_annual_value,
-                    max_annual_value=self.max_annual_value,
-                )
+            except Exception:
+                logger.warning("Failed to enrich award %s", award_id, exc_info=True)
+                return None
 
         try:
-            return await asyncio.gather(*(enrich_one(row) for row in awards))
+            results = await asyncio.gather(*(enrich_one(row) for row in awards))
+            return [result for result in results if result is not None]
         finally:
             await shared_client.aclose()
 
@@ -439,6 +453,8 @@ class USAspendingClient:
         row: dict[str, Any],
         enrichment: dict[str, Any],
         generated_internal_id: str | None,
+        *,
+        include_prior_search: bool = True,
     ) -> dict[str, Any]:
         empty = {
             "option_extensions_count": 0,
@@ -452,7 +468,7 @@ class USAspendingClient:
 
         start_date = enrichment.get("start_date") or parse_end_date(row.get("Start Date"))
         prior_similar_awards_count = 0
-        if option_extensions_count < 2 and start_date:
+        if include_prior_search and option_extensions_count < 2 and start_date:
             prior_similar_awards_count = await self._search_prior_similar_awards(
                 client,
                 row,

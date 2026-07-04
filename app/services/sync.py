@@ -101,7 +101,16 @@ class ContractSyncService:
                 window_start, window_end
             ):
                 pages_scanned = pages
-                enriched_fields = await self.client.enrich_awards_batch(page_batch)
+                if page_batch:
+                    log.message = (
+                        f"Enriching {len(page_batch)} contracts "
+                        f"(NAICS {naics_code}, page {pages_scanned})…"
+                    )
+                    self.db.commit()
+                enriched_fields = await self.client.enrich_awards_batch(
+                    page_batch,
+                    include_prior_search=False,
+                )
 
                 for fields in enriched_fields:
                     if not annual_value_in_range(
