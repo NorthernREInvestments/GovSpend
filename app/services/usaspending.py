@@ -98,6 +98,9 @@ class USAspendingClient:
             if max_annual_value is not None
             else (self.max_award_amount or 350_000)
         )
+        self.min_annual_value = (
+            min_award_amount if min_award_amount is not None else settings.min_award_amount
+        )
 
     def _award_amount_filter(self) -> list[dict[str, float]]:
         # Loose total-value floor; annual range is enforced after detail enrichment.
@@ -290,6 +293,7 @@ class USAspendingClient:
                 return map_award_to_contract_fields(
                     row,
                     enrichment,
+                    min_annual_value=self.min_annual_value,
                     max_annual_value=self.max_annual_value,
                 )
 
@@ -439,6 +443,7 @@ def map_award_to_contract_fields(
     row: dict[str, Any],
     enrichment: dict[str, Any],
     *,
+    min_annual_value: float = 50_000,
     max_annual_value: float = 350_000,
 ) -> dict[str, Any]:
     description = (row.get("Description") or "").strip()
@@ -506,7 +511,10 @@ def map_award_to_contract_fields(
         "pursuit_score": compute_pursuit_score(
             estimated_annual,
             end_date,
+            number_of_offers_received=enrichment.get("number_of_offers_received"),
+            set_aside=enrichment.get("set_aside") or "",
+            pop_flag=pop_flag,
+            min_annual_value=min_annual_value,
             max_annual_value=max_annual_value,
-            recurring_fit_score=float(recurring["recurring_fit_score"] or 0.4),
         ),
     }

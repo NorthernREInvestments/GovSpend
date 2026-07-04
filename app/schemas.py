@@ -39,6 +39,9 @@ class ContractRead(ContractBase):
     extent_competed: str = ""
     solicitation_number: str = ""
     pursuit_score: float = 0
+    priority_tier_label: str = ""
+    expires_in_label: str = ""
+    bidders_label: str = ""
     notes: str = ""
     last_synced_at: datetime
 

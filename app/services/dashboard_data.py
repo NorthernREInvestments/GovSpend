@@ -8,7 +8,7 @@ from app.services.app_settings import get_or_create_app_settings
 from app.services.scoring import (
     apply_recompete_filter,
     effective_annual_value,
-    priority_tier,
+    evaluate_contract_pursuit,
     pursuit_score_for_contract,
 )
 
@@ -17,33 +17,50 @@ def pursuit_contracts_query(db: Session):
     return db.query(Contract)
 
 
-def sort_pursuit_contracts(contracts: list[Contract], db: Session) -> list[Contract]:
+def _annual_bounds(db: Session) -> tuple[float, float]:
     settings = get_or_create_app_settings(db)
-    max_annual = settings.max_award_amount or 350_000
+    return (
+        settings.min_award_amount,
+        settings.max_award_amount or 350_000,
+    )
+
+
+def contract_pursuit_score(contract: Contract, db: Session) -> float:
+    min_annual, max_annual = _annual_bounds(db)
+    stored = contract.pursuit_score or 0
+    if stored >= 1:
+        return stored
+    return pursuit_score_for_contract(
+        estimated_annual_value=contract.estimated_annual_value,
+        total_obligation=contract.total_obligation,
+        award_amount=contract.award_amount,
+        start_date=contract.start_date,
+        expiration_date=contract.expiration_date,
+        potential_end_date=contract.potential_end_date,
+        pop_flag=contract.pop_flag,
+        number_of_offers_received=contract.number_of_offers_received,
+        set_aside=contract.set_aside,
+        min_annual_value=min_annual,
+        max_annual_value=max_annual,
+    )
+
+
+def sort_pursuit_contracts(contracts: list[Contract], db: Session) -> list[Contract]:
     return sorted(
         contracts,
         key=lambda contract: (
-            -pursuit_score_for_contract(
-                estimated_annual_value=contract.estimated_annual_value,
-                total_obligation=contract.total_obligation,
-                award_amount=contract.award_amount,
-                start_date=contract.start_date,
-                expiration_date=contract.expiration_date,
-                potential_end_date=contract.potential_end_date,
-                pop_flag=contract.pop_flag,
-                recurring_fit_score=contract.recurring_fit_score or None,
-                max_annual_value=max_annual,
-            ),
-            -(contract.recurring_fit_score or 0),
+            -contract_pursuit_score(contract, db),
             contract.expiration_date,
             -contract.estimated_annual_value,
-            -contract.award_amount,
         ),
     )
 
 
 def build_dashboard_data(db: Session) -> dict:
     settings = get_or_create_app_settings(db)
+    min_annual = settings.min_award_amount
+    max_annual = settings.max_award_amount or 350_000
+
     all_contracts = sort_pursuit_contracts(pursuit_contracts_query(db).all(), db)
     actionable = [
         contract
@@ -55,20 +72,15 @@ def build_dashboard_data(db: Session) -> dict:
         contract_rows,
         recompete_only=settings.recompete_only,
     )
+
     hot_leads = [
         contract
         for contract in contract_rows
-        if priority_tier(
-            effective_annual_value(
-                estimated_annual_value=contract.estimated_annual_value,
-                total_obligation=contract.total_obligation,
-                award_amount=contract.award_amount,
-                start_date=contract.start_date,
-                expiration_date=contract.expiration_date,
-            ),
-            contract.expiration_date,
-            recurring_fit_score=contract.recurring_fit_score or 0.4,
-        )
+        if evaluate_contract_pursuit(
+            contract,
+            min_annual_value=min_annual,
+            max_annual_value=max_annual,
+        ).priority_tier
         == "High"
     ][:5]
 

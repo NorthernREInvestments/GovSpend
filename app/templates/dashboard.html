@@ -117,14 +117,19 @@
 
     <section id="hot-leads-section" class="hot-leads{% if not hot_leads %} hidden{% endif %}">
       <h2>Act Now — High Priority</h2>
-      <p>High est. annual value contracts expiring within 3 weeks. Research incumbent, contact CO, watch SAM.gov for solicitation.</p>
+      <p>Top-scoring recompete targets: urgent window, low competition, and annual value in your range.</p>
       <div class="hot-grid" id="hot-leads-grid">
         {% for lead in hot_leads %}
         <article class="hot-card">
           <div class="hot-top">
-            <span class="priority priority-high">High</span>
+            <div class="score-block">
+              <span class="pursuit-score">{{ lead | pursuit_score_display }}</span>
+              <span class="priority priority-{{ (lead | priority_tier) | lower }}">{{ lead | priority_tier }}</span>
+            </div>
             <span class="amount">{{ lead.estimated_annual_value | currency if lead.estimated_annual_value > 0 else 'Sync pending' }}<span class="amount-suffix">{% if lead.estimated_annual_value > 0 %}/yr est.{% endif %}</span></span>
           </div>
+          <p class="card-highlight expires-highlight">{{ lead | expires_display }}</p>
+          <p class="card-highlight bidders-highlight">{{ lead | bidders_display }}</p>
           <h3>{{ lead.contract_name }}</h3>
           {% if lead.pop_flag %}
           <p class="pop-flag pop-flag-{{ 'final' if 'Final' in lead.pop_flag else 'options' }}">{{ lead.pop_flag }}</p>
@@ -134,15 +139,15 @@
           {% endif %}
           <p class="hot-meta">
             {% if lead.potential_end_date and lead.potential_end_date != lead.expiration_date %}
-            Current end: {{ lead.expiration_date }} · Final possible: {{ lead.potential_end_date }}
+            Ends {{ lead.expiration_date }} · Final possible {{ lead.potential_end_date }}
             {% else %}
-            {{ lead.expiration_date }}
+            Ends {{ lead.expiration_date }}
             {% endif %}
-            · {{ lead.expiration_date | days_until }} days · {{ lead.agency }}
+            · {{ lead.agency }}
           </p>
           <p class="hot-meta-secondary">Total obligation: {{ lead | contract_total | currency }}</p>
-          {% if lead.number_of_offers_received is not none %}
-          <p class="hot-meta-secondary">Offers received: {{ lead.number_of_offers_received }}</p>
+          {% if lead.set_aside %}
+          <p class="hot-meta-secondary">Set-aside: {{ lead.set_aside }}</p>
           {% endif %}
           <p class="hot-incumbent">Incumbent: {{ lead.incumbent_name }}</p>
           {% if lead.generated_internal_id %}
@@ -157,7 +162,7 @@
       <div class="table-header">
         <h2>Pursuit Pipeline</h2>
         <p id="pipeline-subtitle">
-          Sorted by pursuit score — urgency + est. annual value + recurring fit.
+          Sorted by pursuit score (1–100) — urgency, competition, annual value, and set-aside fit.
           {% if app_settings.recompete_only %}
           Showing <strong>recompete only</strong> (option years hidden).
           {% else %}
@@ -171,8 +176,9 @@
         <table>
           <thead>
             <tr>
-              <th>Priority</th>
-              <th>Expires</th>
+              <th>Score</th>
+              <th>Timeline</th>
+              <th>Competition</th>
               <th>Est. Annual Value</th>
               <th>Contract</th>
               <th>Competition Intel</th>
@@ -187,19 +193,22 @@
             {% for contract in contracts %}
             {% set tier = contract | priority_tier %}
             <tr class="tier-{{ tier | lower }} {% if contract.expiration_date | days_until <= 14 %}urgent{% endif %}">
-              <td><span class="priority priority-{{ tier | lower }}">{{ tier }}</span></td>
+              <td class="score-cell">
+                <div class="pursuit-score">{{ contract | pursuit_score_display }}</div>
+                <span class="priority priority-{{ tier | lower }}">{{ tier }}</span>
+              </td>
               <td>
-                {% if contract.potential_end_date and contract.potential_end_date != contract.expiration_date %}
-                <span class="end-date-label">Current end:</span>
-                {% endif %}
-                <strong>{{ contract.expiration_date }}</strong>
-                <span class="days-tag">{{ contract.expiration_date | days_until }}d</span>
-                {% if contract.potential_end_date and contract.potential_end_date != contract.expiration_date %}
-                <div class="end-date-secondary">Final possible: {{ contract.potential_end_date }}</div>
-                {% endif %}
+                <div class="card-highlight expires-highlight">{{ contract | expires_display }}</div>
+                <div class="end-date-secondary">{{ contract.expiration_date }}</div>
                 {% set length_summary = contract | contract_length_summary %}
                 {% if length_summary %}
                 <div class="end-date-secondary">{{ length_summary }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <div class="card-highlight bidders-highlight">{{ contract | bidders_display }}</div>
+                {% if contract.set_aside %}
+                <div class="end-date-secondary">{{ contract.set_aside }}</div>
                 {% endif %}
               </td>
               <td class="amount">
@@ -264,8 +273,9 @@
         <table>
           <thead>
             <tr>
-              <th>Priority</th>
-              <th>Expires</th>
+              <th>Score</th>
+              <th>Timeline</th>
+              <th>Competition</th>
               <th>Est. Annual Value</th>
               <th>Contract</th>
               <th>Competition Intel</th>

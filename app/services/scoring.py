@@ -1,13 +1,31 @@
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 OPTIONS_VALUE_THRESHOLD = 0.05
 MIN_ANNUALIZATION_YEARS = 0.25
 DAYS_PER_YEAR = 365.25
+DEFAULT_MIN_ANNUAL = 50_000
+DEFAULT_MAX_ANNUAL = 350_000
 
 IDEAL_PERIOD_MIN = 0.85
 IDEAL_PERIOD_MAX = 1.35
 IDEAL_REMAINING_OPTIONS_MIN = 3.0
 IDEAL_TOTAL_RUNWAY_MIN = 4.0
+
+TOTAL_SMALL_BUSINESS_MARKERS = (
+    "total small business",
+    "total sb set-aside",
+)
+
+RECOMPETE_POP_FLAG = "Final Option Period — Recompete Likely"
+
+
+@dataclass(frozen=True)
+class PursuitEvaluation:
+    pursuit_score: int
+    priority_tier: str
+    days_until_expiration: int
+    bidders_display: str
 
 
 def actual_period_years(start_date: date, end_date: date) -> float | None:
@@ -132,44 +150,190 @@ def format_period_years(years: float | None) -> str:
     return f"{years:.1f} yrs"
 
 
+def is_total_small_business_setaside(set_aside: str) -> bool:
+    normalized = set_aside.strip().lower()
+    return any(marker in normalized for marker in TOTAL_SMALL_BUSINESS_MARKERS)
+
+
+def format_bidders_display(number_of_offers_received: int | None) -> str:
+    if number_of_offers_received is None:
+        return "Unknown bidders last time"
+    count = int(number_of_offers_received)
+    label = "bidder" if count == 1 else "bidders"
+    return f"{count} {label} last time"
+
+
+def _urgency_points(days_left: int) -> int:
+    if days_left <= 90:
+        return 35
+    if days_left <= 180:
+        return 20
+    return 5
+
+
+def _competition_points(number_of_offers_received: int | None) -> int:
+    if number_of_offers_received is None:
+        return 8
+    offers = int(number_of_offers_received)
+    if 1 <= offers <= 3:
+        return 25
+    if 4 <= offers <= 7:
+        return 12
+    return 0
+
+
+def _annual_value_points(
+    estimated_annual_value: float,
+    *,
+    min_annual_value: float,
+    max_annual_value: float,
+) -> int:
+    if estimated_annual_value < min_annual_value or estimated_annual_value > max_annual_value:
+        return 0
+    span = max(max_annual_value - min_annual_value, 1)
+    normalized = (estimated_annual_value - min_annual_value) / span
+    return 15 + round(min(max(normalized, 0.0), 1.0) * 10)
+
+
+def _set_aside_points(set_aside: str) -> int:
+    return 10 if is_total_small_business_setaside(set_aside) else 0
+
+
+def _recompete_points(pop_flag: str) -> int:
+    if pop_flag == RECOMPETE_POP_FLAG:
+        return 5
+    if pop_flag == "Options Available":
+        return 0
+    return 2
+
+
+def evaluate_pursuit(
+    *,
+    estimated_annual_value: float,
+    expiration_date: date,
+    number_of_offers_received: int | None = None,
+    set_aside: str = "",
+    pop_flag: str = "",
+    min_annual_value: float = DEFAULT_MIN_ANNUAL,
+    max_annual_value: float = DEFAULT_MAX_ANNUAL,
+    today: date | None = None,
+) -> PursuitEvaluation:
+    today = today or date.today()
+    days_left = (expiration_date - today).days
+    in_range = annual_value_in_range(
+        estimated_annual_value,
+        min_annual_value,
+        max_annual_value,
+    )
+    small_biz = is_total_small_business_setaside(set_aside)
+    offers = number_of_offers_received
+
+    score = (
+        _urgency_points(days_left)
+        + _competition_points(offers)
+        + _annual_value_points(
+            estimated_annual_value,
+            min_annual_value=min_annual_value,
+            max_annual_value=max_annual_value,
+        )
+        + _set_aside_points(set_aside)
+        + _recompete_points(pop_flag)
+    )
+    score = max(1, min(100, score))
+
+    force_low = (
+        days_left > 180
+        or not in_range
+        or (offers is not None and offers >= 8)
+    )
+    if force_low:
+        score = min(score, 40 if days_left > 180 or not in_range else 35)
+        tier = "Low"
+    elif (
+        days_left <= 90
+        and in_range
+        and offers is not None
+        and 1 <= offers <= 3
+        and small_biz
+    ):
+        score = max(score, 85)
+        tier = "High"
+    elif (
+        days_left <= 90
+        and in_range
+        and (offers is None or 1 <= offers <= 3)
+        and score >= 75
+    ):
+        tier = "High"
+    elif (
+        days_left <= 180
+        and in_range
+        and offers is not None
+        and 4 <= offers <= 7
+    ):
+        score = max(score, 55)
+        tier = "Medium"
+    elif days_left <= 180 and in_range and score >= 50:
+        tier = "Medium"
+    else:
+        tier = "Low"
+
+    return PursuitEvaluation(
+        pursuit_score=score,
+        priority_tier=tier,
+        days_until_expiration=days_left,
+        bidders_display=format_bidders_display(offers),
+    )
+
+
 def compute_pursuit_score(
     estimated_annual_value: float,
     expiration_date: date,
     *,
-    max_annual_value: float = 350_000,
-    recurring_fit_score: float = 0.4,
+    number_of_offers_received: int | None = None,
+    set_aside: str = "",
+    pop_flag: str = "",
+    min_annual_value: float = DEFAULT_MIN_ANNUAL,
+    max_annual_value: float = DEFAULT_MAX_ANNUAL,
     today: date | None = None,
+    **_legacy_kwargs,
 ) -> float:
-    """Higher score = act sooner. Balances urgency, est. annual value, and recurring fit."""
-    today = today or date.today()
-    days_left = max((expiration_date - today).days, 1)
-    urgency = (61 - min(days_left, 60)) / 60
-    value = min(estimated_annual_value / max(max_annual_value, 1), 1.0)
-    recurring = min(max(recurring_fit_score, 0.0), 1.0)
-    base = urgency * 0.50 + value * 0.35 + recurring * 0.15
-    return round(min(base, 1.0), 4)
+    return float(
+        evaluate_pursuit(
+            estimated_annual_value=estimated_annual_value,
+            expiration_date=expiration_date,
+            number_of_offers_received=number_of_offers_received,
+            set_aside=set_aside,
+            pop_flag=pop_flag,
+            min_annual_value=min_annual_value,
+            max_annual_value=max_annual_value,
+            today=today,
+        ).pursuit_score
+    )
 
 
 def priority_tier(
     estimated_annual_value: float,
     expiration_date: date,
     *,
-    recurring_fit_score: float = 0.4,
+    number_of_offers_received: int | None = None,
+    set_aside: str = "",
+    pop_flag: str = "",
+    min_annual_value: float = DEFAULT_MIN_ANNUAL,
+    max_annual_value: float = DEFAULT_MAX_ANNUAL,
     today: date | None = None,
+    **_legacy_kwargs,
 ) -> str:
-    today = today or date.today()
-    days_left = (expiration_date - today).days
-    if recurring_fit_score >= 0.85 and days_left <= 60 and estimated_annual_value >= 50_000:
-        return "High"
-    if days_left <= 21 and estimated_annual_value >= 125_000:
-        return "High"
-    if days_left <= 14 and estimated_annual_value >= 75_000:
-        return "High"
-    if days_left <= 45 or estimated_annual_value >= 175_000:
-        return "Medium"
-    if recurring_fit_score >= 1.0 and estimated_annual_value >= 50_000:
-        return "Medium"
-    return "Low"
+    return evaluate_pursuit(
+        estimated_annual_value=estimated_annual_value,
+        expiration_date=expiration_date,
+        number_of_offers_received=number_of_offers_received,
+        set_aside=set_aside,
+        pop_flag=pop_flag,
+        min_annual_value=min_annual_value,
+        max_annual_value=max_annual_value,
+        today=today,
+    ).priority_tier
 
 
 def usaspending_award_url(generated_internal_id: str | None) -> str:
@@ -195,9 +359,6 @@ def watchlist_priority(
 
 def expected_repost_dates(expiration_date: date) -> tuple[date, date]:
     return expiration_date - timedelta(days=120), expiration_date - timedelta(days=30)
-
-
-RECOMPETE_POP_FLAG = "Final Option Period — Recompete Likely"
 
 
 def is_recompete_candidate(pop_flag: str) -> bool:
@@ -261,9 +422,12 @@ def pursuit_score_for_contract(
     expiration_date: date,
     potential_end_date: date | None = None,
     pop_flag: str = "",
-    recurring_fit_score: float | None = None,
-    max_annual_value: float = 350_000,
+    number_of_offers_received: int | None = None,
+    set_aside: str = "",
+    min_annual_value: float = DEFAULT_MIN_ANNUAL,
+    max_annual_value: float = DEFAULT_MAX_ANNUAL,
     today: date | None = None,
+    **_legacy_kwargs,
 ) -> float:
     annual = effective_annual_value(
         estimated_annual_value=estimated_annual_value,
@@ -274,17 +438,39 @@ def pursuit_score_for_contract(
     )
     if annual <= 0:
         return 0.0
-    if recurring_fit_score is None:
-        recurring_fit_score = compute_recurring_profile(
-            start_date=start_date,
-            expiration_date=expiration_date,
-            potential_end_date=potential_end_date,
-            pop_flag=pop_flag,
-        )["recurring_fit_score"]
     return compute_pursuit_score(
         annual,
         expiration_date,
+        number_of_offers_received=number_of_offers_received,
+        set_aside=set_aside,
+        pop_flag=pop_flag,
+        min_annual_value=min_annual_value,
         max_annual_value=max_annual_value,
-        recurring_fit_score=float(recurring_fit_score or 0.4),
+        today=today,
+    )
+
+
+def evaluate_contract_pursuit(
+    contract,
+    *,
+    min_annual_value: float = DEFAULT_MIN_ANNUAL,
+    max_annual_value: float = DEFAULT_MAX_ANNUAL,
+    today: date | None = None,
+) -> PursuitEvaluation:
+    annual = effective_annual_value(
+        estimated_annual_value=contract.estimated_annual_value,
+        total_obligation=contract.total_obligation,
+        award_amount=contract.award_amount,
+        start_date=contract.start_date,
+        expiration_date=contract.expiration_date,
+    )
+    return evaluate_pursuit(
+        estimated_annual_value=annual,
+        expiration_date=contract.expiration_date,
+        number_of_offers_received=contract.number_of_offers_received,
+        set_aside=contract.set_aside,
+        pop_flag=contract.pop_flag,
+        min_annual_value=min_annual_value,
+        max_annual_value=max_annual_value,
         today=today,
     )

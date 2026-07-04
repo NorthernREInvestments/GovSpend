@@ -27,6 +27,36 @@ function daysUntil(expirationDate) {
   return Math.floor((expiration - today) / 86400000);
 }
 
+function priorityTierFromContract(contract) {
+  if (contract.priority_tier_label) {
+    return contract.priority_tier_label;
+  }
+  const score = pursuitScoreDisplay(contract);
+  if (score >= 75) return "High";
+  if (score >= 50) return "Medium";
+  return "Low";
+}
+
+function pursuitScoreDisplay(contract) {
+  const score = Number(contract.pursuit_score) || 0;
+  return score >= 1 ? Math.round(score) : 0;
+}
+
+function expiresDisplay(contract) {
+  if (contract.expires_in_label) return contract.expires_in_label;
+  const days = daysUntil(contract.expiration_date);
+  if (days < 0) return `Expired ${Math.abs(days)} days ago`;
+  if (days === 0) return "Expires today";
+  return `Expires in ${days} days`;
+}
+
+function biddersDisplay(contract) {
+  if (contract.bidders_label) return contract.bidders_label;
+  if (contract.number_of_offers_received == null) return "Unknown bidders last time";
+  const count = Number(contract.number_of_offers_received);
+  return `${count} ${count === 1 ? "bidder" : "bidders"} last time`;
+}
+
 function priorityTier(estimatedAnnualValue, expirationDate, recurringFitScore = 0.4) {
   const daysLeft = daysUntil(expirationDate);
   if (recurringFitScore >= 0.85 && daysLeft <= 60 && estimatedAnnualValue >= 50000) return "High";
@@ -157,7 +187,7 @@ function renderIntel(contract) {
   if (contract.number_of_offers_received != null) {
     const offers = Number(contract.number_of_offers_received);
     const label = offers === 1 ? "1 offer" : `${offers} offers`;
-    parts.push(`<div><strong>Offers received:</strong> ${escapeHtml(label)}</div>`);
+    parts.push(`<div><strong>Last award:</strong> ${escapeHtml(label)}</div>`);
   }
   if (contract.solicitation_number) {
     parts.push(`<div><strong>Solicitation:</strong> ${escapeHtml(contract.solicitation_number)}</div>`);
@@ -175,8 +205,7 @@ function renderStatusOptions(contract, statuses) {
 }
 
 function renderContractRow(contract, statuses) {
-  const annualValue = contract.estimated_annual_value > 0 ? contract.estimated_annual_value : 0;
-  const tier = priorityTier(annualValue, contract.expiration_date, contract.recurring_fit_score || 0.4);
+  const tier = priorityTierFromContract(contract);
   const tierLower = tier.toLowerCase();
   const days = daysUntil(contract.expiration_date);
   const urgentClass = days <= 14 ? " urgent" : "";
@@ -186,8 +215,19 @@ function renderContractRow(contract, statuses) {
 
   return `
     <tr class="tier-${tierLower}${urgentClass}">
-      <td><span class="priority priority-${tierLower}">${tier}</span></td>
-      <td>${renderExpirationDates(contract)}</td>
+      <td class="score-cell">
+        <div class="pursuit-score">${pursuitScoreDisplay(contract)}</div>
+        <span class="priority priority-${tierLower}">${escapeHtml(tier)}</span>
+      </td>
+      <td>
+        <div class="card-highlight expires-highlight">${escapeHtml(expiresDisplay(contract))}</div>
+        <div class="end-date-secondary">${escapeHtml(contract.expiration_date)}</div>
+        ${contractLengthSummary(contract) ? `<div class="end-date-secondary">${escapeHtml(contractLengthSummary(contract))}</div>` : ""}
+      </td>
+      <td>
+        <div class="card-highlight bidders-highlight">${escapeHtml(biddersDisplay(contract))}</div>
+        ${contract.set_aside ? `<div class="end-date-secondary">${escapeHtml(contract.set_aside)}</div>` : ""}
+      </td>
       <td class="amount">
         ${renderAnnualAmount(contract)}
         <div class="amount-secondary">${formatCurrency(contractTotalValue(contract))} total</div>
@@ -221,15 +261,7 @@ function renderContractRow(contract, statuses) {
 }
 
 function renderHotLead(lead) {
-  const days = daysUntil(lead.expiration_date);
-  const hasFinalEnd = lead.potential_end_date && lead.potential_end_date !== lead.expiration_date;
-  const endLine = hasFinalEnd
-    ? `Current end: ${lead.expiration_date} · Final possible: ${lead.potential_end_date}`
-    : lead.expiration_date;
-  const offersLine =
-    lead.number_of_offers_received != null
-      ? `<p class="hot-meta-secondary">Offers received: ${Number(lead.number_of_offers_received)}</p>`
-      : "";
+  const tier = priorityTierFromContract(lead);
   const link = lead.generated_internal_id
     ? `<a href="${awardUrl(lead.generated_internal_id)}" target="_blank" rel="noopener" class="link">View on USAspending →</a>`
     : "";
@@ -237,19 +269,24 @@ function renderHotLead(lead) {
   return `
     <article class="hot-card">
       <div class="hot-top">
-        <span class="priority priority-high">High</span>
+        <div class="score-block">
+          <span class="pursuit-score">${pursuitScoreDisplay(lead)}</span>
+          <span class="priority priority-${tier.toLowerCase()}">${escapeHtml(tier)}</span>
+        </div>
         <span class="amount">${
           lead.estimated_annual_value > 0
             ? `${formatCurrency(lead.estimated_annual_value)}<span class="amount-suffix">/yr est.</span>`
             : '<span class="amount-pending">Sync pending</span>'
         }</span>
       </div>
+      <p class="card-highlight expires-highlight">${escapeHtml(expiresDisplay(lead))}</p>
+      <p class="card-highlight bidders-highlight">${escapeHtml(biddersDisplay(lead))}</p>
       <h3>${escapeHtml(lead.contract_name)}</h3>
       ${renderPopFlag(lead.pop_flag)}
       ${renderRecurringFit(lead.recurring_fit)}
-      <p class="hot-meta">${escapeHtml(endLine)} · ${days} days · ${escapeHtml(lead.agency)}</p>
+      <p class="hot-meta">Ends ${escapeHtml(lead.expiration_date)} · ${escapeHtml(lead.agency)}</p>
       <p class="hot-meta-secondary">Total obligation: ${formatCurrency(contractTotalValue(lead))}</p>
-      ${offersLine}
+      ${lead.set_aside ? `<p class="hot-meta-secondary">Set-aside: ${escapeHtml(lead.set_aside)}</p>` : ""}
       <p class="hot-incumbent">Incumbent: ${escapeHtml(lead.incumbent_name)}</p>
       ${link}
     </article>
@@ -411,8 +448,8 @@ function updatePipelineSubtitle(recompeteOnly) {
   const subtitle = document.getElementById("pipeline-subtitle");
   if (!subtitle) return;
   subtitle.innerHTML = recompeteOnly
-    ? "Sorted by pursuit score — urgency + est. annual value + recurring fit. Showing <strong>recompete only</strong> (option years hidden)."
-    : "Sorted by pursuit score — urgency + est. annual value + recurring fit. Ideal: ~1yr periods with multi-year options.";
+    ? "Sorted by pursuit score (1–100). Showing <strong>recompete only</strong> (option years hidden)."
+    : "Sorted by pursuit score (1–100) — urgency, competition, annual value, and set-aside fit.";
 }
 
 async function applyRecompeteFilter() {

@@ -490,8 +490,41 @@ tr.urgent td { background: rgba(239, 68, 68, 0.08); }
   font-size: 0.88rem;
 }
 
+.score-cell {
+  min-width: 72px;
+}
+
+.score-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pursuit-score {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #f8fafc;
+}
+
+.card-highlight {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 0.2rem;
+}
+
+.expires-highlight {
+  color: #fde68a;
+}
+
+.bidders-highlight {
+  color: #93c5fd;
+}
+
 .priority {
   display: inline-block;
+  margin-top: 0.35rem;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   font-size: 0.72rem;

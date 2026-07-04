@@ -29,7 +29,12 @@ from app.services.dashboard_data import build_dashboard_data, pursuit_contracts_
 from app.services.govtracker import apply_govtracker_match, find_watchlist_matches
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.cleanup import CleanupService
-from app.services.scoring import apply_recompete_filter, effective_annual_value, priority_tier, usaspending_award_url
+from app.services.scoring import (
+    apply_recompete_filter,
+    effective_annual_value,
+    evaluate_contract_pursuit,
+    usaspending_award_url,
+)
 from app.services.sync import ContractSyncService
 from app.services.sync_lock import SyncInProgressError, acquire_sync_lock
 
@@ -42,12 +47,44 @@ def _pursuit_query(db: Session):
     return pursuit_contracts_query(db)
 
 
+def _contract_read(contract: Contract, db: Session) -> ContractRead:
+    settings = get_or_create_app_settings(db)
+    evaluation = evaluate_contract_pursuit(
+        contract,
+        min_annual_value=settings.min_award_amount,
+        max_annual_value=settings.max_award_amount or 350_000,
+    )
+    score = (
+        int(round(contract.pursuit_score))
+        if contract.pursuit_score >= 1
+        else evaluation.pursuit_score
+    )
+    payload = ContractRead.model_validate(contract).model_dump()
+    payload.update(
+        {
+            "pursuit_score": score,
+            "priority_tier_label": evaluation.priority_tier,
+            "expires_in_label": (
+                "Expires today"
+                if evaluation.days_until_expiration == 0
+                else (
+                    f"Expired {abs(evaluation.days_until_expiration)} days ago"
+                    if evaluation.days_until_expiration < 0
+                    else f"Expires in {evaluation.days_until_expiration} days"
+                )
+            ),
+            "bidders_label": evaluation.bidders_display,
+        }
+    )
+    return ContractRead(**payload)
+
+
 @router.get("/dashboard/live", response_model=DashboardLiveRead)
 def dashboard_live(db: Session = Depends(get_db)):
     data = build_dashboard_data(db)
     return DashboardLiveRead(
-        contracts=[ContractRead.model_validate(contract) for contract in data["contracts"]],
-        hot_leads=[ContractRead.model_validate(lead) for lead in data["hot_leads"]],
+        contracts=[_contract_read(contract, db) for contract in data["contracts"]],
+        hot_leads=[_contract_read(lead, db) for lead in data["hot_leads"]],
         stats=data["stats"],
     )
 
@@ -267,16 +304,18 @@ def export_contracts(db: Session = Depends(get_db)):
         "USAspending URL",
     ])
     today = date.today()
+    min_annual = settings.min_award_amount
+    max_annual = settings.max_award_amount or 350_000
     for c in contracts:
-        days_left = (c.expiration_date - today).days
+        evaluation = evaluate_contract_pursuit(
+            c,
+            min_annual_value=min_annual,
+            max_annual_value=max_annual,
+            today=today,
+        )
         writer.writerow([
-            priority_tier(
-                c.estimated_annual_value,
-                c.expiration_date,
-                recurring_fit_score=c.recurring_fit_score or 0.4,
-                today=today,
-            ),
-            c.pursuit_score,
+            evaluation.priority_tier,
+            evaluation.pursuit_score if c.pursuit_score < 1 else int(round(c.pursuit_score)),
             c.estimated_annual_value,
             c.total_obligation,
             c.pop_flag,
@@ -286,7 +325,7 @@ def export_contracts(db: Session = Depends(get_db)):
             c.total_runway_years if c.total_runway_years is not None else "",
             c.expiration_date.isoformat(),
             c.potential_end_date.isoformat() if c.potential_end_date else "",
-            days_left,
+            evaluation.days_until_expiration,
             c.number_of_offers_received if c.number_of_offers_received is not None else "",
             c.start_date.isoformat() if c.start_date else "",
             c.contract_name,

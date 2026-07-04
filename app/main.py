@@ -20,8 +20,8 @@ from app.services.scoring import (
     compute_recurring_profile,
     contract_total_obligation,
     effective_annual_value,
+    evaluate_contract_pursuit,
     format_period_years,
-    priority_tier,
     usaspending_award_url,
 )
 from app.database import SessionLocal, get_db
@@ -155,12 +155,31 @@ def _contract_total(contract: Contract) -> float:
     )
 
 
+def _contract_pursuit_eval(contract: Contract):
+    return evaluate_contract_pursuit(contract)
+
+
 def _contract_priority_tier(contract: Contract) -> str:
-    return priority_tier(
-        _contract_annual(contract),
-        contract.expiration_date,
-        recurring_fit_score=contract.recurring_fit_score or 0.4,
-    )
+    return _contract_pursuit_eval(contract).priority_tier
+
+
+def _contract_pursuit_score_display(contract: Contract) -> int:
+    if contract.pursuit_score >= 1:
+        return int(round(contract.pursuit_score))
+    return _contract_pursuit_eval(contract).pursuit_score
+
+
+def _contract_expires_display(contract: Contract) -> str:
+    days = _contract_pursuit_eval(contract).days_until_expiration
+    if days < 0:
+        return f"Expired {abs(days)} days ago"
+    if days == 0:
+        return "Expires today"
+    return f"Expires in {days} days"
+
+
+def _contract_bidders_display(contract: Contract) -> str:
+    return _contract_pursuit_eval(contract).bidders_display
 
 
 def _contract_length_summary(contract: Contract) -> str:
@@ -214,6 +233,9 @@ templates.env.filters["contract_annual"] = _contract_annual
 templates.env.filters["contract_total"] = _contract_total
 templates.env.filters["contract_length_summary"] = _contract_length_summary
 templates.env.filters["recurring_fit_class"] = _recurring_fit_class
+templates.env.filters["pursuit_score_display"] = _contract_pursuit_score_display
+templates.env.filters["expires_display"] = _contract_expires_display
+templates.env.filters["bidders_display"] = _contract_bidders_display
 templates.env.filters["award_url"] = usaspending_award_url
 
 
