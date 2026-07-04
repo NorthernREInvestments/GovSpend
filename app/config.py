@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     naics_parallel_limit: int = 8
     browse_min_annual: float = 25_000
     browse_max_annual: float = 10_000_000
-    browse_max_results: int = 50
+    browse_max_results: int = 100
     browse_max_pages_per_naics: int = 1
 
 
