@@ -29,7 +29,7 @@ from app.services.dashboard_data import build_dashboard_data, pursuit_contracts_
 from app.services.govtracker import apply_govtracker_match, find_watchlist_matches
 from app.services.app_settings import get_or_create_app_settings, update_app_settings
 from app.services.cleanup import CleanupService
-from app.services.scoring import effective_annual_value, priority_tier, usaspending_award_url
+from app.services.scoring import apply_recompete_filter, effective_annual_value, priority_tier, usaspending_award_url
 from app.services.sync import ContractSyncService
 from app.services.sync_lock import SyncInProgressError, acquire_sync_lock
 
@@ -178,6 +178,7 @@ def patch_settings(payload: AppSettingsUpdate, db: Session = Depends(get_db)):
         min_award_amount=payload.min_award_amount,
         max_award_amount=payload.max_award_amount,
         expiration_days=payload.expiration_days,
+        recompete_only=payload.recompete_only,
     )
 
 
@@ -189,6 +190,8 @@ def list_contracts(
     contracts = pursuit_contracts_query(db).all()
     if status:
         contracts = [contract for contract in contracts if contract.status == status]
+    settings = get_or_create_app_settings(db)
+    contracts = apply_recompete_filter(contracts, recompete_only=settings.recompete_only)
     return sort_pursuit_contracts(contracts, db)
 
 
@@ -226,7 +229,11 @@ def update_contract_notes(
 
 @router.get("/contracts/export")
 def export_contracts(db: Session = Depends(get_db)):
-    contracts = sort_pursuit_contracts(pursuit_contracts_query(db).all(), db)
+    settings = get_or_create_app_settings(db)
+    contracts = apply_recompete_filter(
+        sort_pursuit_contracts(pursuit_contracts_query(db).all(), db),
+        recompete_only=settings.recompete_only,
+    )
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([

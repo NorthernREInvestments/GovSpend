@@ -44,11 +44,13 @@ def update_app_settings(
     min_award_amount: float,
     expiration_days: int,
     max_award_amount: float | None = None,
+    recompete_only: bool = False,
 ) -> AppSettings:
     row = get_or_create_app_settings(db)
     row.min_award_amount = min_award_amount
     row.max_award_amount = max_award_amount
     row.expiration_days = expiration_days
+    row.recompete_only = recompete_only
     row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)

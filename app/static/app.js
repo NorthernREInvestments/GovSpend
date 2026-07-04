@@ -318,6 +318,7 @@ async function saveSettings() {
   const maxAwardRaw = document.getElementById("max-award-amount").value.trim();
   const maxAwardAmount = maxAwardRaw ? Number(maxAwardRaw) : null;
   const expirationDays = Number(document.getElementById("expiration-days").value);
+  const recompeteOnly = Boolean(document.getElementById("recompete-only")?.checked);
   const response = await fetch("/api/settings", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -325,6 +326,7 @@ async function saveSettings() {
       min_award_amount: minAwardAmount,
       max_award_amount: maxAwardAmount,
       expiration_days: expirationDays,
+      recompete_only: recompeteOnly,
     }),
   });
   if (!response.ok) {
@@ -404,6 +406,28 @@ async function runSync() {
     btn.textContent = "Refresh Now";
   }
 }
+
+function updatePipelineSubtitle(recompeteOnly) {
+  const subtitle = document.getElementById("pipeline-subtitle");
+  if (!subtitle) return;
+  subtitle.innerHTML = recompeteOnly
+    ? "Sorted by pursuit score — urgency + est. annual value + recurring fit. Showing <strong>recompete only</strong> (option years hidden)."
+    : "Sorted by pursuit score — urgency + est. annual value + recurring fit. Ideal: ~1yr periods with multi-year options.";
+}
+
+async function applyRecompeteFilter() {
+  try {
+    await saveSettings();
+    await refreshDashboard();
+    const recompeteOnly = Boolean(document.getElementById("recompete-only")?.checked);
+    updatePipelineSubtitle(recompeteOnly);
+    showToast(recompeteOnly ? "Showing recompete candidates only" : "Showing all contracts");
+  } catch (error) {
+    showToast(error.message || "Failed to update filter");
+  }
+}
+
+document.getElementById("recompete-only")?.addEventListener("change", applyRecompeteFilter);
 
 document.getElementById("settings-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();

@@ -79,6 +79,7 @@ class AppSettingsRead(BaseModel):
     min_award_amount: float
     max_award_amount: float | None = None
     expiration_days: int
+    recompete_only: bool = False
     updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
@@ -88,6 +89,7 @@ class AppSettingsUpdate(BaseModel):
     min_award_amount: float = Field(ge=1_000, le=500_000_000)
     max_award_amount: float | None = Field(default=None, ge=1_000, le=500_000_000)
     expiration_days: int = Field(ge=1, le=365)
+    recompete_only: bool = False
 
     @model_validator(mode="after")
     def validate_amount_range(self) -> "AppSettingsUpdate":

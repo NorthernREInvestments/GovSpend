@@ -157,6 +157,7 @@ class AppSettings(Base):
     min_award_amount: Mapped[float] = mapped_column(Float, nullable=False, default=50_000)
     max_award_amount: Mapped[float | None] = mapped_column(Float, nullable=True, default=350_000)
     expiration_days: Mapped[int] = mapped_column(nullable=False, default=60)
+    recompete_only: Mapped[bool] = mapped_column(nullable=False, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

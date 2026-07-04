@@ -211,6 +211,39 @@ h1 {
 .field-hint {
   font-size: 0.75rem;
   color: var(--muted);
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.view-filter-panel {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.view-filter-toggle {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.view-filter-toggle input {
+  margin-top: 0.2rem;
+  width: 1rem;
+  height: 1rem;
+  accent-color: #3b82f6;
+}
+
+.view-filter-toggle strong {
+  color: #f8fafc;
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--muted);
   font-weight: 400;
 }
 

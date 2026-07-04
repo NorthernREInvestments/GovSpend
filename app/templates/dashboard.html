@@ -85,6 +85,17 @@
       </form>
     </section>
 
+    <section class="view-filter-panel">
+      <label class="view-filter-toggle">
+        <input type="checkbox" id="recompete-only" name="recompete_only"
+          {% if app_settings.recompete_only %}checked{% endif %} />
+        <span>
+          <strong>Recompete only</strong> — hide contracts with option years left
+          <span class="field-hint">Shows only <em>Final Option Period — Recompete Likely</em>. Display filter only; does not change sync.</span>
+        </span>
+      </label>
+    </section>
+
     <section class="stats-grid">
       <article class="stat-card stat-primary">
         <p class="stat-label">Est. Annual Pipeline</p>
@@ -145,7 +156,14 @@
     <section class="table-section">
       <div class="table-header">
         <h2>Pursuit Pipeline</h2>
-        <p>Sorted by pursuit score — urgency + est. annual value + recurring fit. Ideal: ~1yr periods with multi-year options.</p>
+        <p id="pipeline-subtitle">
+          Sorted by pursuit score — urgency + est. annual value + recurring fit.
+          {% if app_settings.recompete_only %}
+          Showing <strong>recompete only</strong> (option years hidden).
+          {% else %}
+          Ideal: ~1yr periods with multi-year options.
+          {% endif %}
+        </p>
       </div>
 
       {% if contracts %}

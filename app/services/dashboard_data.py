@@ -6,6 +6,7 @@ from app.models import Contract, ContractStatus
 from app.schemas import DashboardStats
 from app.services.app_settings import get_or_create_app_settings
 from app.services.scoring import (
+    apply_recompete_filter,
     effective_annual_value,
     priority_tier,
     pursuit_score_for_contract,
@@ -42,6 +43,7 @@ def sort_pursuit_contracts(contracts: list[Contract], db: Session) -> list[Contr
 
 
 def build_dashboard_data(db: Session) -> dict:
+    settings = get_or_create_app_settings(db)
     all_contracts = sort_pursuit_contracts(pursuit_contracts_query(db).all(), db)
     actionable = [
         contract
@@ -49,6 +51,10 @@ def build_dashboard_data(db: Session) -> dict:
         if contract.status not in (ContractStatus.WON, ContractStatus.LOST)
     ]
     contract_rows = actionable or all_contracts
+    contract_rows = apply_recompete_filter(
+        contract_rows,
+        recompete_only=settings.recompete_only,
+    )
     hot_leads = [
         contract
         for contract in contract_rows

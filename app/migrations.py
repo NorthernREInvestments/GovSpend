@@ -55,6 +55,7 @@ NEW_COLUMNS = [
 
 APP_SETTINGS_COLUMNS = [
     ("max_award_amount", "DOUBLE PRECISION"),
+    ("recompete_only", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

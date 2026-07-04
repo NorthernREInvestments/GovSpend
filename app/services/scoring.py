@@ -197,6 +197,20 @@ def expected_repost_dates(expiration_date: date) -> tuple[date, date]:
     return expiration_date - timedelta(days=120), expiration_date - timedelta(days=30)
 
 
+RECOMPETE_POP_FLAG = "Final Option Period — Recompete Likely"
+
+
+def is_recompete_candidate(pop_flag: str) -> bool:
+    """True when option ceiling is exhausted and a new competition is more likely."""
+    return pop_flag == RECOMPETE_POP_FLAG
+
+
+def apply_recompete_filter(contracts: list, *, recompete_only: bool) -> list:
+    if not recompete_only:
+        return contracts
+    return [contract for contract in contracts if is_recompete_candidate(contract.pop_flag)]
+
+
 def annual_value_in_range(
     estimated_annual_value: float | None,
     min_annual_value: float,
