@@ -57,16 +57,6 @@ function biddersDisplay(contract) {
   return `${count} ${count === 1 ? "bidder" : "bidders"} last time`;
 }
 
-function priorityTier(estimatedAnnualValue, expirationDate, recurringFitScore = 0.4) {
-  const daysLeft = daysUntil(expirationDate);
-  if (recurringFitScore >= 0.85 && daysLeft <= 60 && estimatedAnnualValue >= 50000) return "High";
-  if (daysLeft <= 21 && estimatedAnnualValue >= 125000) return "High";
-  if (daysLeft <= 14 && estimatedAnnualValue >= 75000) return "High";
-  if (daysLeft <= 45 || estimatedAnnualValue >= 175000) return "Medium";
-  if (recurringFitScore >= 1.0 && estimatedAnnualValue >= 50000) return "Medium";
-  return "Low";
-}
-
 function popFlagClass(popFlag) {
   if (!popFlag) return "";
   return popFlag.includes("Final") ? "final" : "options";
